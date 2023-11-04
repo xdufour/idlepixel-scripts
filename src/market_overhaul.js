@@ -1,13 +1,13 @@
 // ==UserScript==
 // @name         IdlePixel Market Overhaul - Wynaan Fork
 // @namespace    com.anwinity.idlepixel
-// @version      1.3.2
+// @version      1.3.3
 // @description  Overhaul of market UI and functionality.
 // @author       Original Author: Anwinity || Modded By: GodofNades/Zlef/Wynaan
 // @license      MIT
 // @match        *://idle-pixel.com/login/play*
 // @require      https://greasyfork.org/scripts/441206-idlepixel/code/IdlePixel+.js?anticache=20220905
-// @require      https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.min.js
+// @require      https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.5.1/chart.min.js
 // @grant none
 // ==/UserScript==
 
@@ -16,7 +16,6 @@
     let marketTimer;
     let marketWatcherTimer;
     var marketRunning = false;
-    var historyChart = undefined;
 
     const LOCAL_STORAGE_KEY = "plugin_market_watchers";
 
@@ -269,6 +268,7 @@
             });
             this.lastBrowsedItem = "all";
             this.lastCategoryFilter = "all";
+            this.historyChart = undefined;
         }
 
         onConfigsChanged() {
@@ -589,6 +589,9 @@
             // History chart
             $(`#panel-player-market button[onclick^="Market.clicks_browse_player_market_button"]`).parent()
                 .before(`<canvas id="history-chart" style="display:block; margin-bottom: 0.5em; width: 90%; height: 200px;">`);
+            Chart.defaults.datasets.line.tension = 0.3;
+            Chart.defaults.datasets.line.fill = false;
+            Chart.defaults.datasets.line.borderWidth = 2;
 
             // Player ID display
             this.onConfigsChanged();
@@ -652,12 +655,8 @@
                 const xpMultiplier = DonorShop.has_donor_active(IdlePixelPlus.getVar("donor_bonus_xp_timestamp")) ? 1.1 : 1;
                 //console.log(data);
 
-                var altListTransform = IdlePixelPlus.plugins.market.getConfig("altIDList").replace(";",",").replace(" ,", ",").replace(" , ",",").replace(", ",",").toLowerCase();
-                var convertAltsToArray = altListTransform.split(',');
-
-                const listofAlts = convertAltsToArray.map(function (x) {
-                    return parseInt(x);
-                });
+                const listofAlts = IdlePixelPlus.plugins.market.getConfig("altIDList").replace(";",",").replace(/\s?,\s?/g, ",").toLowerCase().split(',').map(altId => parseInt(altId));
+                const useHeatPot = $("#heat-pot-checkbox").is(':checked');
 
                 if(data.filter(datum => ["logs", "raw_fish"].includes(datum.market_item_category)).length == 0) {
                     $("#heat-pot-div").hide();
@@ -665,19 +664,9 @@
                     $("#heat-pot-div").show();
                     var coinsPerHeat = 100000;
                     $.ajax({url: `../../market/browse/logs/`, type: "get", async: false, success: function(data) {
-                        let best = 100000;
-                        data.forEach(datum => {
-                            const logsPriceAfterTax = datum.market_item_price_each * 1.01;
-                            let perCoin = (logsPriceAfterTax / (Cooking.getHeatPerLog(datum.market_item_name)));
-                            if(perCoin < best) {
-                                best = perCoin;
-                            }
-                        });
-                        coinsPerHeat = best;
+                        coinsPerHeat = 1.01 * Math.min(...data.map(datum => datum.market_item_price_each / Cooking.getHeatPerLog(datum.market_item_name)));
                     }});
                 }
-
-                const useHeatPot = $("#heat-pot-checkbox").is(':checked');
 
                 data.forEach(datum => {
                     let player_id_alt_check = parseInt(datum.player_id);
@@ -921,14 +910,7 @@
                     let levelReq = datum.levelReq;
                     let your_entry = "";
 
-
-                    var altListTransform = IdlePixelPlus.plugins.market.getConfig("altIDList").replace(";",",").replace(" ,", ",").replace(" , ",",").replace(", ",",").toLowerCase();
-                    var convertAltsToArray = altListTransform.split(',');
-                    const listofAltsCheck = convertAltsToArray.map(function (x) {
-                        return parseInt(x);
-                    });
-
-                    if(listofAltsCheck.indexOf(player_id) != -1) {
+                    if(listofAlts.indexOf(player_id) != -1) {
                         // Remove the alts listing from the market
                     } else {
                         if(Items.getItem("player_id") == player_id) {
@@ -1250,15 +1232,31 @@
             const data = await response.json();
             //console.log("Fetched data: ", data); // Debugging line
             const dataByDay = this.splitHistoryDataByDays(data);
+
+            const historyChartCustomTooltip = (tooltipItems) => {
+                const amountsSum = dataByDay[tooltipItems[0].dataIndex].data.map(datum => datum.amount).reduce((a, b) => a + b, 0);
+                return `Transaction Volume: ${amountsSum}`;
+            }
+
             $("#history-chart").show();
             if(this.historyChart === undefined){
                 this.historyChart = new Chart($("#history-chart"), {
                     type: 'line',
-                    data: {},
                     options: {
                         scales: {
                             y: {
                                 beginAtZero: false
+                            }
+                        },
+                        interaction: {
+                            intersect: false,
+                            mode: 'index',
+                        },
+                        plugins: {
+                            tooltip: {
+                                callbacks: {
+                                    footer: historyChartCustomTooltip
+                                }
                             }
                         }
                     }
@@ -1268,29 +1266,26 @@
         }
 
         updateHistoryChart(dataByDay) {
+            const averagePrices = dataByDay.map(datum => Math.round(datum.data.map(d => d.price * d.amount)
+                                                                              .reduce((a, b) => a + b, 0) / datum.data.map(d => d.amount)
+                                                                                                                      .reduce((a, b) => a + b, 0)));
             this.historyChart.data = {
                 labels: dataByDay.map(datum => datum.date.toString().match(/^[a-zA-Z]+\s([a-zA-Z]+\s[0-9]{1,2})\s/)[1]),
                 datasets: [{
-                    label: 'Average Price',
-                    data: dataByDay.map(datum => Math.round(datum.data.reduce((a, b) => a + b, 0) / datum.data.length)),
-                    fill: false,
-                    borderColor: 'rgb(15, 47, 137)',
-                    borderWidth: 2
+                    label: 'Lowest Price',
+                    data: dataByDay.map(datum => Math.min(...datum.data.map(d => d.price))),
+                    borderColor: 'rgb(80, 145, 37)',
                 },
-                           {
-                               label: 'Lowest Price',
-                               data: dataByDay.map(datum => Math.min(...datum.data)),
-                               fill: false,
-                               borderColor: 'rgb(80, 145, 37)',
-                               borderWidth: 2
-                           },
-                           {
-                               label: 'Highest Price',
-                               data: dataByDay.map(datum => Math.max(...datum.data)),
-                               fill: false,
-                               borderColor: 'rgb(147, 10, 10)',
-                               borderWidth: 2
-                           }]
+                {
+                    label: 'Average Price',
+                    data: averagePrices,
+                    borderColor: 'rgb(15, 47, 137)',
+                },
+                {
+                    label: 'Highest Price',
+                    data: dataByDay.map(datum => Math.max(...datum.data.map(d => d.price))),
+                    borderColor: 'rgb(147, 10, 10)',
+                }]
             };
             this.historyChart.update();
         }
@@ -1302,10 +1297,10 @@
                 if(match.length == 0) {
                     daysData.push({
                         date: new Date(datum.datetime),
-                        data: [datum.price]
+                        data: [{price: datum.price, amount: datum.amount}]
                     });
                 } else {
-                    match[0].data.push(datum.price);
+                    match[0].data.push({price: datum.price, amount: datum.amount});
                 }
             });
             return daysData;
@@ -1333,20 +1328,20 @@
 
         createWatcherElement(item, value, lt_gt) {
             $("#market-watcher-div").children().last().after(`
-                    <div id="watched-item-${item}" class="market-tradable-item p-1 m-1 hover shadow" style="background-color:#ffcccc">
-                        <div align="left" onclick='IdlePixelPlus.plugins.market.browseGetTable(\"${item}\"); event.stopPropagation();'>
-                            <img class="hover" src="https://d1xsc8x7nc5q8t.cloudfront.net/images/search_white.png" width="15px" height="15px" title="search_white">
-                        </div>
-                        <div onclick='IdlePixelPlus.plugins.market.watchedItemOnClick(\"${item}\");' style="margin-top: -15px;">
-                        <div style="display: block;">
-                            <img src="https://idlepixel.s3.us-east-2.amazonaws.com/images/${item}.png" width="50px" height="50px">
-                        </div>
-                        <div style="display: block;">
-                            <img src="https://d1xsc8x7nc5q8t.cloudfront.net/images/coins.png" title="coins">
-                            <span class="market-watched-item" id="watched-item-${item}-label">${lt_gt} ${value}</span>
-                        </div>
-                        </div>
-                    </div>`);
+            <div id="watched-item-${item}" class="market-tradable-item p-1 m-1 hover shadow" style="background-color:#ffcccc">
+                <div align="left" onclick='IdlePixelPlus.plugins.market.browseGetTable(\"${item}\"); event.stopPropagation();'>
+                    <img class="hover" src="https://d1xsc8x7nc5q8t.cloudfront.net/images/search_white.png" width="15px" height="15px" title="search_white">
+                </div>
+                <div onclick='IdlePixelPlus.plugins.market.watchedItemOnClick(\"${item}\");' style="margin-top: -15px;">
+                <div style="display: block;">
+                    <img src="https://idlepixel.s3.us-east-2.amazonaws.com/images/${item}.png" width="50px" height="50px">
+                </div>
+                <div style="display: block;">
+                    <img src="https://d1xsc8x7nc5q8t.cloudfront.net/images/coins.png" title="coins">
+                    <span class="market-watched-item" id="watched-item-${item}-label">${lt_gt} ${value}</span>
+                </div>
+                </div>
+            </div>`);
         }
 
         deleteMarketWatcher(item) {
