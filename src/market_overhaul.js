@@ -8,8 +8,6 @@
 // @match        *://idle-pixel.com/login/play*
 // @require      https://greasyfork.org/scripts/441206-idlepixel/code/IdlePixel+.js?anticache=20220905
 // @require      https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.min.js
-// @downloadURL  https://github.com/xdufour/idlepixel-scripts/raw/main/src/market_overhaul.js
-// @updateURL    https://github.com/xdufour/idlepixel-scripts/raw/main/src/market_overhaul.js
 // @grant none
 // ==/UserScript==
 
