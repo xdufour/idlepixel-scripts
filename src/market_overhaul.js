@@ -1,13 +1,15 @@
 // ==UserScript==
 // @name         IdlePixel Market Overhaul - Wynaan Fork
 // @namespace    com.anwinity.idlepixel
-// @version      1.3.1
+// @version      1.3.2
 // @description  Overhaul of market UI and functionality.
 // @author       Original Author: Anwinity || Modded By: GodofNades/Zlef/Wynaan
 // @license      MIT
 // @match        *://idle-pixel.com/login/play*
 // @require      https://greasyfork.org/scripts/441206-idlepixel/code/IdlePixel+.js?anticache=20220905
 // @require      https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.min.js
+// @downloadURL  https://github.com/xdufour/idlepixel-scripts/raw/main/src/market_overhaul.js
+// @updateURL    https://github.com/xdufour/idlepixel-scripts/raw/main/src/market_overhaul.js
 // @grant none
 // ==/UserScript==
 
@@ -437,52 +439,53 @@
             </style>
             `);
 
-            $("#modal-item-input").after(`<div class="modal modal-dim" id="modal-market-configure-item-watcher" tabindex="-1" style="top: 0px; display: none;" aria-modal="true" role="dialog">
-              <div class="modal-dialog">
-              <div class="modal-content">
-              <div class="modal-header">
-                   <h5 class="modal-title text-secondary">ITEM WATCHER</h5>
-                   <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-              </div>
-              <div class="modal-body">
-            <div class="center">
-            <div class="modal-market-sell-image p-2 hard-shadow">
-              <h2 id="modal-market-configure-item-watcher-label"></h2>
-              <img id="modal-market-configure-item-watcher-image" width="50px" height="50px" original-width="50px" original-height="50px" src="">
-            </div>
-              <br>
-              <input type="hidden" id="modal-market-configure-item-watcher">
-              <div class="modal-market-watcher-inputs font-small color-grey p-2 shadow">
-                <br>
-                <br>
-                Limit:
-                <span class="color-gold" id="modal-market-configure-item-watcher-low-limit">20,000,000</span>
-                -
-                <span class="color-gold" id="modal-market-configure-item-watcher-high-limit">100,000,000</span>
-                <span class="color-gold"> each</span>
-                <br>
-                <img src="https://d1xsc8x7nc5q8t.cloudfront.net/images/coins.png" title="coins">
-                <input type="text" id="modal-market-configure-item-watcher-price-each" width="30%" placeholder="Price Each" original-width="30%">
-                <select id="modal-market-configure-item-watcher-mode">
-                   <option value="1">Less than</option>
-                   <option value="2">At least</option>
-                </select>
-                <br>
-                <br>
-                <br>
-                <br>
-                <div>
-                  <input type="button" id="modal-market-configure-item-watcher-cancel-button" data-bs-dismiss="modal" value="Cancel">
-                  <input type="button" id="modal-market-configure-item-watcher-ok-button" onclick="IdlePixelPlus.plugins.market.createMarketWatcher()" class="background-primary hover" value="Create Watcher">
-                  <u class="hover" onclick="alert(&quot;You will get a notification when the price crosses the specified threshold.&quot;)">?</u>
+            $("#modal-item-input").after(`
+            <div class="modal modal-dim" id="modal-market-configure-item-watcher" tabindex="-1" style="top: 0px; display: none;" aria-modal="true" role="dialog">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title text-secondary">ITEM WATCHER</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="center">
+                                <div class="modal-market-sell-image p-2 hard-shadow">
+                                    <h2 id="modal-market-configure-item-watcher-label"></h2>
+                                    <img id="modal-market-configure-item-watcher-image" width="50px" height="50px" original-width="50px" original-height="50px" src="">
+                                </div>
+                                <br>
+                                <input type="hidden" id="modal-market-configure-item-watcher">
+                                <div class="modal-market-watcher-inputs font-small color-grey p-2 shadow">
+                                    <br>
+                                    <br>
+                                    Limit:
+                                    <span class="color-gold" id="modal-market-configure-item-watcher-low-limit">20,000,000</span>
+                                    -
+                                    <span class="color-gold" id="modal-market-configure-item-watcher-high-limit">100,000,000</span>
+                                    <span class="color-gold"> each</span>
+                                    <br>
+                                    <img src="https://d1xsc8x7nc5q8t.cloudfront.net/images/coins.png" title="coins">
+                                    <input type="text" id="modal-market-configure-item-watcher-price-each" width="30%" placeholder="Price Each" original-width="30%">
+                                    <select id="modal-market-configure-item-watcher-mode">
+                                    <option value="1">Less than</option>
+                                    <option value="2">At least</option>
+                                    </select>
+                                    <br>
+                                    <br>
+                                    <br>
+                                    <br>
+                                    <div>
+                                        <input type="button" id="modal-market-configure-item-watcher-cancel-button" data-bs-dismiss="modal" value="Cancel">
+                                        <input type="button" id="modal-market-configure-item-watcher-ok-button" onclick="IdlePixelPlus.plugins.market.createMarketWatcher()" class="background-primary hover" value="Create Watcher">
+                                        <u class="hover" onclick="alert(&quot;You will get a notification when the price crosses the specified threshold.&quot;)">?</u>
+                                    </div>
+                                    <br>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <br>
-              </div>
-            </div>
-        </div>
-    </div>
-  </div>
-</div>`);
+            </div>`);
             // modal-market-configure-item-to-sell-amount
             const sellModal = $("#modal-market-configure-item-to-sell");
             const sellAmountInput = sellModal.find("#modal-market-configure-item-to-sell-amount");
