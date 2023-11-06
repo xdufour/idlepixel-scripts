@@ -282,7 +282,7 @@
             }
 
             if(this.getConfig("marketGraph")) {
-                $("#history-chart").hide();
+                $("#history-chart-div").hide();
             }
         }
 
@@ -351,8 +351,6 @@
             if(condensed) {
                 $("#panel-player-market").addClass("condensed");
                 $("#modal-market-select-item").addClass("condensed");
-                // Make sell slots total width the same as the rest of the UI without changing the panel's center style
-                document.getElementsByClassName("player-market-slot-base").item(0).parentNode.style.justifyContent = "space-between";
             }
             else {
                 $("#panel-player-market").removeClass("condensed");
@@ -469,6 +467,9 @@
               .menu > li > span:not(:first-child) {
                 position: absolute;
                 right: 12px;
+              }
+              #history-chart-div {
+                margin: 0 auto;
               }
             </style>
             `);
@@ -656,9 +657,12 @@
                 subtree: true
             });
 
+            const sellSlotWidth = $(".player-market-slot-base").outerWidth();
             // History chart
             $(`#panel-player-market button[onclick^="Market.clicks_browse_player_market_button"]`).parent()
-                .before(`<canvas id="history-chart" style="display:block; margin-bottom: 0.5em; width: 90%; height: 200px;">`);
+                .before(`<center id="history-chart-div" style="display:block; margin-bottom: 0.5em; width: ${sellSlotWidth * 3}px; height: 200px;">
+                            <canvas id="history-chart" style="display: block;">
+                        </center>`);
             Chart.defaults.datasets.line.tension = 0.3;
             Chart.defaults.datasets.line.fill = false;
             Chart.defaults.datasets.line.borderWidth = 2;
@@ -676,7 +680,7 @@
                 </div>`);
             $("#history-chart").prev().before(`
                 <center>
-                <div id="market-watcher-div" class="select-item-tradables-catagory shadow" align="left" style="width: 100%; margin: 0px; padding: 10pt; background-color: rgb(254, 254, 254); display: none;">
+                <div id="market-watcher-div" class="select-item-tradables-catagory shadow" align="left" style="width: ${sellSlotWidth * 3}px; margin: 0px; padding: 10pt; background-color: rgb(254, 254, 254); display: none;">
                     <span class="bold">Active watchers</span>
                     <hr style="margin-top: 2px; margin-bottom: 4px;">
                 </div>
@@ -695,7 +699,7 @@
             }
             if(item == "all") {
                 $("#watch-market-item-button").hide();
-                $("#history-chart").hide();
+                $("#history-chart-div").hide();
             }
             else {
                 $("#watch-market-item-button").show();
@@ -929,7 +933,7 @@
                 if(item !== self.lastBrowsedItem)
                     self.lastSortIndex = 0;
                 self.currentTableData = data;
-                self.filterTable(item === "all" ? self.lastCategoryFilter : data[0].market_item_category);
+                self.filterTable(item === "all" ? self.lastCategoryFilter : (data.length > 0 ? data[0].market_item_category : "all"));
                 
                 hide_element("market-loading");
                 show_element("market-table");
@@ -1276,11 +1280,12 @@
             //console.log("Fetched data: ", data); // Debugging line
             const dataByDay = this.splitHistoryDataByDays(data);
 
-            $("#history-chart").show();
+            $("#history-chart-div").show();
             if(this.historyChart === undefined){
                 this.historyChart = new Chart($("#history-chart"), {
                     type: 'line',
                     options: {
+                        maintainAspectRatio: false,
                         scales: {
                             y: {
                                 beginAtZero: false
