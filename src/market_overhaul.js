@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         IdlePixel Market Overhaul - Wynaan Fork
 // @namespace    com.anwinity.idlepixel
-// @version      1.3.4
+// @version      1.3.5
 // @description  Overhaul of market UI and functionality.
 // @author       Original Author: Anwinity || Modded By: GodofNades/Zlef/Wynaan
 // @license      MIT
@@ -185,7 +185,8 @@
         raw_small_stardust_fish: 300,
         raw_medium_stardust_fish: 600,
         raw_large_stardust_fish: 2000
-    }
+    };
+
     const CHARCOAL_PERC = {
         logs: 0.05,
         oak_logs: 0.1,
@@ -194,7 +195,16 @@
         stardust_logs: 0.25,
         pine_logs: 0.3,
         redwood_logs: 0.35
-    }
+    };
+
+    const CATEGORY_RATIOS = {
+        ores: ["Coins/XP"],
+        bars: ["Coins/XP"],
+        bones: ["Coins/Bonemeal"],
+        logs: ["Coins/Heat", "Coins/Charcoal"],
+        raw_fish: ["Coins/Energy", "Energy/Heat", "Coins/Heat/Energy"],
+        cooked_fish: ["Coins/Energy"]
+    };
 
     class MarketPlugin extends IdlePixelPlusPlugin {
         constructor() {
@@ -211,19 +221,6 @@
                         label: "Condensed UI",
                         type: "boolean",
                         default: true
-                    },
-                    {
-                        id: "sortMethod",
-                        label: "Sort Method",
-                        type: "select",
-                        default: "default",
-                        options: [
-                            {value: "default", label: "Default"},
-                            {value: "timeDESC", label: "Time (Newest First)"},
-                            {value: "timeASC", label: "Time (Newest Last)"},
-                            {value: "priceASC", label: "Price (Cheapest First)"},
-                            {value: "priceDESC", label: "Price (Cheapest Last)"},
-                        ]
                     },
                     {
                         id: "highlightBest",
@@ -269,6 +266,8 @@
             this.lastBrowsedItem = "all";
             this.lastCategoryFilter = "all";
             this.historyChart = undefined;
+            this.currentTableData = undefined;
+            this.lastSortIndex = 0;
         }
 
         onConfigsChanged() {
@@ -352,6 +351,8 @@
             if(condensed) {
                 $("#panel-player-market").addClass("condensed");
                 $("#modal-market-select-item").addClass("condensed");
+                // Make sell slots total width the same as the rest of the UI without changing the panel's center style
+                document.getElementsByClassName("player-market-slot-base").item(0).parentNode.style.justifyContent = "space-between";
             }
             else {
                 $("#panel-player-market").removeClass("condensed");
@@ -409,34 +410,70 @@
                 margin: 6px 6px;
                 padding: 6px 6px;
               }
+              #modal-market-select-item.condensed #modal-market-select-item-section .select-item-tradables-catagory:hover {
+                box-shadow: 4px 4px 8px #0e0e0e;
+                border-color: #252525;
+                cursor: pointer;
+              }
 
               #modal-market-select-item.condensed #modal-market-select-item-section .select-item-tradables-catagory hr {
                 margin-top: 2px;
                 margin-bottom: 2px;
               }
-              #market-category-filters {
-                display: flex;
-                flex-direction: row;
-                justify-content: center;
-                align-items: start;
-                flex-wrap: wrap;
-                margin: 0.25em;
-              }
-              #market-category-filters > button {
-                display: inline-block;
-                margin: 0.25em;
-              }
-              #market-category-filters > button.active {
-                background-color: #74DBDB;
-              }
-
               .hide {
                 display: none;
               }
-
+              .bold {
+                font-weight: bold;
+              }
+              .select-item-tradables-catagory {
+                border-radius: 5pt;
+              }
+              #market-table th.actions:hover {
+                color: gray;
+                cursor: pointer;
+              }
+              .context-menu { 
+                position: absolute; 
+              } 
+              .menu {
+                display: flex;
+                flex-direction: column;
+                background-color: rgb(240, 240, 240);
+                border-radius: 5pt;
+                box-shadow: 4px 4px 8px #0e0e0e;
+                padding: 10px 0;
+                list-style-type: none;
+              }
+              .menu > li {
+                font: inherit;
+                border: 0;
+                padding: 4px 36px 4px 16px;
+                width: 100%;
+                display: flex;
+                align-items: center;
+                position: relative;
+                text-decoration: unset;
+                color: #000;
+                transition: 0.5s linear;
+                -webkit-transition: 0.5s linear;
+                -moz-transition: 0.5s linear;
+                -ms-transition: 0.5s linear;
+                -o-transition: 0.5s linear;
+              }
+              .menu > li:hover {
+                background:#afafaf;
+                color: #15156d;
+                cursor: pointer;
+              }
+              .menu > li > span:not(:first-child) {
+                position: absolute;
+                right: 12px;
+              }
             </style>
             `);
 
+            // Market watcher modal
             $("#modal-item-input").after(`
             <div class="modal modal-dim" id="modal-market-configure-item-watcher" tabindex="-1" style="top: 0px; display: none;" aria-modal="true" role="dialog">
                 <div class="modal-dialog">
@@ -457,9 +494,9 @@
                                     <br>
                                     <br>
                                     Limit:
-                                    <span class="color-gold" id="modal-market-configure-item-watcher-low-limit">20,000,000</span>
+                                    <span class="color-gold" id="modal-market-configure-item-watcher-low-limit">N/A</span>
                                     -
-                                    <span class="color-gold" id="modal-market-configure-item-watcher-high-limit">100,000,000</span>
+                                    <span class="color-gold" id="modal-market-configure-item-watcher-high-limit">N/A</span>
                                     <span class="color-gold"> each</span>
                                     <br>
                                     <img src="https://d1xsc8x7nc5q8t.cloudfront.net/images/coins.png" title="coins">
@@ -484,6 +521,18 @@
                     </div>
                 </div>
             </div>`);
+            
+            // Market table sort menu
+            
+            $("#panel-player-market").append(`
+            <div id="market-sort-context-menu" class="context-menu" style="display: none"> 
+                <ul class="menu"> 
+                    <li id="context-menu-price-each-item" onclick='IdlePixelPlus.plugins.market.contextMenuSelectOnClick(\"context-menu-price-each-item\");'>
+                        <span> Price Each</span>
+                    </li> 
+                </ul> 
+            </div>`);
+
             // modal-market-configure-item-to-sell-amount
             const sellModal = $("#modal-market-configure-item-to-sell");
             const sellAmountInput = sellModal.find("#modal-market-configure-item-to-sell-amount");
@@ -553,20 +602,15 @@
             // wrap Market.browse_get_table to capture last selected
             const original_market_browse = Market.browse_get_table;
             Market.browse_get_table = function(item) {
-                return self.browseGetTable(item)
-                    .always(() => {
-                    self.filterTable();
-                });
+                return self.browseGetTable(item);
             }
 
             $("#market-table").css("margin-top", "24px");
-            $("#market-table").parent().before(`<div id="market-category-filters"><div>`);
 
             // wrap Market.load_tradables to populate category filters
             const original_load_tradables = Market.load_tradables;
             Market.load_tradables = function(data) {
                 original_load_tradables.apply(this, arguments);
-                self.createFilterButtons();
             }
             // Temporarily overwrite market_select_tradable_item to bypass the browse button
             // websocket message opening the tradable modal after calling load_tradables()
@@ -576,15 +620,41 @@
             }
             websocket.send("MARKET_BROWSE_BUTTON_CLICKED");
 
-            // Extra buttons beside <BROWSER PLAYER MARKET>
+            // Extra buttons beside <BROWSE PLAYER MARKET>
             $(`#panel-player-market button[onclick^="Market.clicks_browse_player_market_button"]`)
                 .first()
                 .after(`<div id="heat-pot-div">
                            <label for "heat-pot" style="margin-left: 1em; margin-top: 0.6em"> Use Heat Potion:</label>
                            <input id="heat-pot-checkbox" type="checkbox" style="margin-left: 0.5em" name="heat-pot" onclick="IdlePixelPlus.plugins.market.refreshMarket(false);" checked>
                        </div>`)
-                .after(`<button id="refresh-market-table-button" type="button" style="margin-left: 0.5em" onclick="IdlePixelPlus.plugins.market.refreshMarket(true);">Refresh</button>`)
-                .after(`<button id="watch-market-item-button" type="button" style="margin-left: 0.5em" onclick="IdlePixelPlus.plugins.market.watchItemOnClick()">Watch Item</button>`);
+                .after(`<button id="refresh-market-table-button" type="button" style="height: 44px; margin-left: 0.5em" onclick="IdlePixelPlus.plugins.market.refreshMarket(true);">
+                            Refresh
+                        </button>`)
+                .after(`<button id="watch-market-item-button" type="button" style="height: 44px; margin-left: 0.5em" onclick="IdlePixelPlus.plugins.market.watchItemOnClick()">
+                            Watch Item
+                        </button>`);;
+
+            // Edit tradables modal category names
+            new window.MutationObserver((mutationRecords) => {
+                const childList = mutationRecords.filter(record => record.type === "childList")[0];
+                if(childList && childList.target && childList.target.id === "modal-market-select-item-section") {
+                    const elements = document.getElementById(childList.target.id).querySelectorAll(".select-item-tradables-catagory");
+                    elements.forEach(e => {
+                        e.classList.add("bold");
+                        e.onclick = () => this.filterButtonOnClick(e.textContent.toLowerCase().replace(" ", "_"));
+                        e.innerHTML = e.innerHTML.replace(/[a-zA-Z_]+<hr>/, e.textContent.split("_").map(w => w[0].toUpperCase() + w.slice(1).toLowerCase()).join(" ") + "<hr>");
+
+                        e.querySelectorAll("div").forEach(d => {
+                            d.addEventListener("click", function(event) {
+                                event.stopPropagation();
+                            });
+                        });
+                    });
+                }
+            }).observe(document.getElementById("modal-market-select-item"), {
+                childList: true,
+                subtree: true
+            });
 
             // History chart
             $(`#panel-player-market button[onclick^="Market.clicks_browse_player_market_button"]`).parent()
@@ -606,9 +676,9 @@
                 </div>`);
             $("#history-chart").prev().before(`
                 <center>
-                <div id="market-watcher-div" class="select-item-tradables-catagory shadow" align="left" style="width: 100%; margin: 0px; background-color: rgb(254, 254, 254); border-radius: 5pt; display: none;">
-                Active watchers
-                <hr>
+                <div id="market-watcher-div" class="select-item-tradables-catagory shadow" align="left" style="width: 100%; margin: 0px; padding: 10pt; background-color: rgb(254, 254, 254); display: none;">
+                    <span class="bold">Active watchers</span>
+                    <hr style="margin-top: 2px; margin-bottom: 4px;">
                 </div>
                 </center>`);
 
@@ -621,19 +691,17 @@
             this.lastBrowsedItem = item;
             if(item != "all") {
                 self.lastCategoryFilter = "all";
+                self.lastSortIndex = 0;
             }
             if(item == "all") {
-                $("#market-category-filters").show();
                 $("#watch-market-item-button").hide();
+                $("#history-chart").hide();
             }
             else {
-                $("#market-category-filters").hide();
                 $("#watch-market-item-button").show();
                 $("#modal-market-configure-item-watcher-image").attr("src", `https://idlepixel.s3.us-east-2.amazonaws.com/images/${item}.png`);
                 $("#modal-market-configure-item-watcher-label").text(item.split("_").map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(" "));
-            }
 
-            if(item != "all") {
                 try {
                     if(this.getConfig("marketGraph")) {
                         self.fetchMarketHistory(item);
@@ -641,9 +709,6 @@
                 } catch(err) {
                     console.log(err);
                 }
-            }
-            else {
-                $("#history-chart").hide();
             }
 
             // A good chunk of this is taking directly from Market.browse_get_table
@@ -668,236 +733,227 @@
                     }});
                 }
 
-                data.forEach(datum => {
-                    let player_id_alt_check = parseInt(datum.player_id);
-                    if(listofAlts.indexOf(player_id_alt_check) != -1) {
-                        // Removes the alts listing from market and calculations
-                    } else {
-                        //console.log(datum);
-                        const priceAfterTax = datum.market_item_price_each * 1.01;
-                        switch(datum.market_item_category) {
-                            case "bars":
-                            case "ores": {
-                                let perCoin = (priceAfterTax / (xpMultiplier*XP_PER[datum.market_item_name]));
-                                datum.perCoin = perCoin;
-                                datum.perCoinLabel = `${perCoin.toFixed(perCoin < 10 ? 2 : 1)} coins/xp`;
-                                datum.levelReq = "N/A";
-                                if(!best[datum.market_item_category]) {
-                                    best[datum.market_item_category] = perCoin;
-                                    bestList[datum.market_item_category] = [datum];
-                                }
-                                else {
-                                    if(perCoin == best[datum.market_item_category]) {
-                                        bestList[datum.market_item_category].push(datum);
-                                    }
-                                    else if(perCoin < best[datum.market_item_category]) {
-                                        bestList[datum.market_item_category] = [datum];
-                                        best[datum.market_item_category] = perCoin;
-                                    }
-                                }
-                                break;
-                            }
-                            case "logs": {
-                                let perCoin = (priceAfterTax / (Cooking.getHeatPerLog(datum.market_item_name) * (useHeatPot ? 2 : 1)));
-                                let sDPerCoin = (3500 / priceAfterTax);
-                                let charPerCoin = ((priceAfterTax / CHARCOAL_PERC[datum.market_item_name]) / 2);
-                                let levelReq = (LEVEL_REQ[datum.market_item_name]);
-                                datum.perCoin = perCoin;
-                                datum.levelReq = levelReq;
-                                datum.sDPerCoin = sDPerCoin;
-                                datum.charPerCoin = charPerCoin;
-                                if (datum.market_item_name == 'stardust_logs') {
-                                    datum.perCoinLabel = `${perCoin.toFixed(perCoin < 10 ? 2 : 1)} coins/heat<br />${sDPerCoin.toFixed(sDPerCoin < 10 ? 2 : 1)} ~SD/coin<br/>${charPerCoin.toFixed(charPerCoin < 10 ? 2: 1)} coin/charcoal convert rate`;
-                                }
-                                else {
-                                    datum.perCoinLabel = `${perCoin.toFixed(perCoin < 10 ? 2 : 1)} coins/heat<br/>${charPerCoin.toFixed(charPerCoin < 10 ? 2: 1)} coin/charcoal convert rate`;
-                                }
-                                if(!best[datum.market_item_category]) {
-                                    best[datum.market_item_category] = perCoin;
-                                    bestList[datum.market_item_category] = [datum];
-                                }
-                                else {
-                                    if(perCoin == best[datum.market_item_category]) {
-                                        bestList[datum.market_item_category].push(datum);
-                                    }
-                                    else if(perCoin < best[datum.market_item_category]) {
-                                        bestList[datum.market_item_category] = [datum];
-                                        best[datum.market_item_category] = perCoin;
-                                    }
-                                }
-                                break;
-                            }
-                            case "raw_fish":{
-                                let perCoin = (priceAfterTax / Cooking.get_energy(datum.market_item_name));
-                                let energy = (Cooking.get_energy(datum.market_item_name));
-                                let heat = (HEAT_PER[datum.market_item_name]);
-                                let perHeat = (energy / heat);
-                                let comboCoinEnergyHeat = ((priceAfterTax + (heat * coinsPerHeat / (useHeatPot ? 2 : 1))) / energy);
-                                let levelReq = (LEVEL_REQ[datum.market_item_name]);
-                                datum.perCoin = comboCoinEnergyHeat;
-                                datum.perHeat = perHeat;
-                                datum.perCoinLabel = `${perCoin.toFixed(perCoin < 10 ? 2 : 1)} coins/energy || ${perHeat.toFixed(perHeat < 10 ? 2 : 1)} energy/heat<br />${comboCoinEnergyHeat.toFixed(comboCoinEnergyHeat < 10 ? 4 : 1)} coins/heat/energy`;
-                                datum.levelReq = levelReq;
-                                if(!best[datum.market_item_category]) {
-                                    best[datum.market_item_category] = perCoin;
-                                    bestList[datum.market_item_category] = [datum];
-                                }
-                                else {
-                                    if(perCoin == best[datum.market_item_category]) {
-                                        bestList[datum.market_item_category].push(datum);
-                                    }
-                                    else if(perCoin < best[datum.market_item_category]) {
-                                        bestList[datum.market_item_category] = [datum];
-                                        best[datum.market_item_category] = perCoin;
-                                    }
-                                }
-                                break;
-                            }
-                            case "cooked_fish":{
-                                let perCoin = (priceAfterTax / Cooking.get_energy(datum.market_item_name));
-                                datum.perCoin = perCoin;
-                                datum.perCoinLabel = `${perCoin.toFixed(perCoin < 10 ? 2 : 1)} coins/energy`;
-                                datum.levelReq = "N/A";
-                                if(!best[datum.market_item_category]) {
-                                    best[datum.market_item_category] = perCoin;
-                                    bestList[datum.market_item_category] = [datum];
-                                }
-                                else {
-                                    if(perCoin == best[datum.market_item_category]) {
-                                        bestList[datum.market_item_category].push(datum);
-                                    }
-                                    else if(perCoin < best[datum.market_item_category]) {
-                                        bestList[datum.market_item_category] = [datum];
-                                        best[datum.market_item_category] = perCoin;
-                                    }
-                                }
-                                break;
-                            }
-                            case "bones": {
-                                let perCoin = (priceAfterTax / BONEMEAL_PER[datum.market_item_name]);
-                                datum.perCoin = perCoin;
-                                datum.perCoinLabel = `${perCoin.toFixed(perCoin < 10 ? 2 : 1)} coins/bonemeal`;
-                                datum.levelReq = "N/A";
-                                if(!best[datum.market_item_category]) {
-                                    best[datum.market_item_category] = perCoin;
-                                    bestList[datum.market_item_category] = [datum];
-                                }
-                                else {
-                                    if(perCoin == best[datum.market_item_category]) {
-                                        bestList[datum.market_item_category].push(datum);
-                                    }
-                                    else if(perCoin < best[datum.market_item_category]) {
-                                        bestList[datum.market_item_category] = [datum];
-                                        best[datum.market_item_category] = perCoin;
-                                    }
-                                }
-                                break;
-                            }
-                            case "seeds": {
-                                datum.perCoin = Number.MAX_SAFE_INTEGER;
-                                let levelReq = (LEVEL_REQ[datum.market_item_name]);
-                                let sDPerCoin = (14000 / priceAfterTax);
-                                datum.levelReq = levelReq;
-                                datum.sDPerCoin = sDPerCoin;
-                                if (datum.market_item_name == "stardust_seeds") {
-                                    datum.perCoinLabel = `${sDPerCoin.toFixed(sDPerCoin < 10 ? 2 : 1)} ~SD/Coin`;
-                                }
-                                else{
-                                    datum.perCoinLabel = "";
-                                }
-                                //console.log(levelReq);
-                                break;
-                            }
-                            case "weapons": {
-                                datum.perCoin = Number.MAX_SAFE_INTEGER;
-                                datum.perCoinLabel = "";
-                                let levelReq = "N/A";
-                                if (LEVEL_REQ[datum.market_item_name]) {
-                                    levelReq = (LEVEL_REQ[datum.market_item_name]);
-                                    datum.levelReq = levelReq;
-                                }
-                                else {
-                                    datum.levelReq = "N/A";
-                                }
-                                //console.log(levelReq);
-                                break;
-                            }
-                            case "other_equipment": {
-                                datum.perCoin = Number.MAX_SAFE_INTEGER;
-                                datum.perCoinLabel = "";
-                                let levelReq = (LEVEL_REQ[datum.market_item_name]);
-                                datum.levelReq = levelReq;
-                                //console.log(levelReq);
-                                break;
-                            }
-                            case "armour": {
-                                datum.perCoin = Number.MAX_SAFE_INTEGER;
-                                datum.perCoinLabel = "";
-                                let levelReq = "N/A";
-                                if (LEVEL_REQ[datum.market_item_name]) {
-                                    levelReq = (LEVEL_REQ[datum.market_item_name]);
-                                    datum.levelReq = levelReq;
-                                }
-                                else {
-                                    datum.levelReq = "N/A";
-                                }
-                                //console.log(levelReq);
-                                break;
-                            }
-                            default: {
-                                datum.perCoin = Number.MAX_SAFE_INTEGER;
-                                datum.perCoinLabel = "";
-                                datum.levelReq = "N/A";
-                                break;
-                            }
+                // Removes the alts listing from market and calculations
+                data = data.filter(datum => listofAlts.indexOf(parseInt(datum.player_id)) == -1);
 
+                data.forEach(datum => {
+                    //console.log(datum);
+                    const priceAfterTax = datum.market_item_price_each * 1.01;
+                    switch(datum.market_item_category) {
+                        case "bars":
+                        case "ores": {
+                            let perCoin = (priceAfterTax / (xpMultiplier*XP_PER[datum.market_item_name]));
+                            datum.perCoin = perCoin;
+                            datum.perCoinLabel = `${perCoin.toFixed(perCoin < 10 ? 2 : 1)} coins/xp`;
+                            datum.levelReq = "N/A";
+                            datum.ratios = [perCoin];
+                            if(!best[datum.market_item_category]) {
+                                best[datum.market_item_category] = perCoin;
+                                bestList[datum.market_item_category] = [datum];
+                            }
+                            else {
+                                if(perCoin == best[datum.market_item_category]) {
+                                    bestList[datum.market_item_category].push(datum);
+                                }
+                                else if(perCoin < best[datum.market_item_category]) {
+                                    bestList[datum.market_item_category] = [datum];
+                                    best[datum.market_item_category] = perCoin;
+                                }
+                            }
+                            break;
                         }
-                    }});
+                        case "logs": {
+                            let perCoin = (priceAfterTax / (Cooking.getHeatPerLog(datum.market_item_name) * (useHeatPot ? 2 : 1)));
+                            let sDPerCoin = (3500 / priceAfterTax);
+                            let charPerCoin = ((priceAfterTax / CHARCOAL_PERC[datum.market_item_name]) / 2);
+                            let levelReq = (LEVEL_REQ[datum.market_item_name]);
+                            datum.perCoin = perCoin;
+                            datum.levelReq = levelReq;
+                            datum.sDPerCoin = sDPerCoin;
+                            datum.charPerCoin = charPerCoin;
+                            datum.ratios = [perCoin, charPerCoin];
+                            if (datum.market_item_name == 'stardust_logs') {
+                                datum.perCoinLabel = `${perCoin.toFixed(perCoin < 10 ? 2 : 1)} coins/heat<br />${sDPerCoin.toFixed(sDPerCoin < 10 ? 2 : 1)} ~SD/coin<br/>${charPerCoin.toFixed(charPerCoin < 10 ? 2: 1)} coin/charcoal convert rate`;
+                            }
+                            else {
+                                datum.perCoinLabel = `${perCoin.toFixed(perCoin < 10 ? 2 : 1)} coins/heat<br/>${charPerCoin.toFixed(charPerCoin < 10 ? 2: 1)} coin/charcoal convert rate`;
+                            }
+                            if(!best[datum.market_item_category]) {
+                                best[datum.market_item_category] = perCoin;
+                                bestList[datum.market_item_category] = [datum];
+                            }
+                            else {
+                                if(perCoin == best[datum.market_item_category]) {
+                                    bestList[datum.market_item_category].push(datum);
+                                }
+                                else if(perCoin < best[datum.market_item_category]) {
+                                    bestList[datum.market_item_category] = [datum];
+                                    best[datum.market_item_category] = perCoin;
+                                }
+                            }
+                            break;
+                        }
+                        case "raw_fish":{
+                            let perCoin = (priceAfterTax / Cooking.get_energy(datum.market_item_name));
+                            let energy = (Cooking.get_energy(datum.market_item_name));
+                            let heat = (HEAT_PER[datum.market_item_name]);
+                            let perHeat = (energy / heat);
+                            let comboCoinEnergyHeat = ((priceAfterTax + (heat * coinsPerHeat / (useHeatPot ? 2 : 1))) / energy);
+                            let levelReq = (LEVEL_REQ[datum.market_item_name]);
+                            datum.perCoin = comboCoinEnergyHeat;
+                            datum.perHeat = perHeat;
+                            datum.perCoinLabel = `${perCoin.toFixed(perCoin < 10 ? 2 : 1)} coins/energy || ${perHeat.toFixed(perHeat < 10 ? 2 : 1)} energy/heat<br />${comboCoinEnergyHeat.toFixed(comboCoinEnergyHeat < 10 ? 4 : 1)} coins/heat/energy`;
+                            datum.levelReq = levelReq;
+                            datum.ratios = [perCoin, perHeat, comboCoinEnergyHeat];
+                            if(!best[datum.market_item_category]) {
+                                best[datum.market_item_category] = perCoin;
+                                bestList[datum.market_item_category] = [datum];
+                            }
+                            else {
+                                if(perCoin == best[datum.market_item_category]) {
+                                    bestList[datum.market_item_category].push(datum);
+                                }
+                                else if(perCoin < best[datum.market_item_category]) {
+                                    bestList[datum.market_item_category] = [datum];
+                                    best[datum.market_item_category] = perCoin;
+                                }
+                            }
+                            break;
+                        }
+                        case "cooked_fish":{
+                            let perCoin = (priceAfterTax / Cooking.get_energy(datum.market_item_name));
+                            datum.perCoin = perCoin;
+                            datum.perCoinLabel = `${perCoin.toFixed(perCoin < 10 ? 2 : 1)} coins/energy`;
+                            datum.levelReq = "N/A";
+                            datum.ratios = [perCoin];
+                            if(!best[datum.market_item_category]) {
+                                best[datum.market_item_category] = perCoin;
+                                bestList[datum.market_item_category] = [datum];
+                            }
+                            else {
+                                if(perCoin == best[datum.market_item_category]) {
+                                    bestList[datum.market_item_category].push(datum);
+                                }
+                                else if(perCoin < best[datum.market_item_category]) {
+                                    bestList[datum.market_item_category] = [datum];
+                                    best[datum.market_item_category] = perCoin;
+                                }
+                            }
+                            break;
+                        }
+                        case "bones": {
+                            let perCoin = (priceAfterTax / BONEMEAL_PER[datum.market_item_name]);
+                            datum.perCoin = perCoin;
+                            datum.perCoinLabel = `${perCoin.toFixed(perCoin < 10 ? 2 : 1)} coins/bonemeal`;
+                            datum.levelReq = "N/A";
+                            datum.ratios = [perCoin];
+                            if(!best[datum.market_item_category]) {
+                                best[datum.market_item_category] = perCoin;
+                                bestList[datum.market_item_category] = [datum];
+                            }
+                            else {
+                                if(perCoin == best[datum.market_item_category]) {
+                                    bestList[datum.market_item_category].push(datum);
+                                }
+                                else if(perCoin < best[datum.market_item_category]) {
+                                    bestList[datum.market_item_category] = [datum];
+                                    best[datum.market_item_category] = perCoin;
+                                }
+                            }
+                            break;
+                        }
+                        case "seeds": {
+                            datum.perCoin = Number.MAX_SAFE_INTEGER;
+                            let levelReq = (LEVEL_REQ[datum.market_item_name]);
+                            let sDPerCoin = (14000 / priceAfterTax);
+                            datum.levelReq = levelReq;
+                            datum.sDPerCoin = sDPerCoin;
+                            if (datum.market_item_name == "stardust_seeds") {
+                                datum.perCoinLabel = `${sDPerCoin.toFixed(sDPerCoin < 10 ? 2 : 1)} ~SD/Coin`;
+                            }
+                            else{
+                                datum.perCoinLabel = "";
+                            }
+                            //console.log(levelReq);
+                            break;
+                        }
+                        case "weapons": {
+                            datum.perCoin = Number.MAX_SAFE_INTEGER;
+                            datum.perCoinLabel = "";
+                            let levelReq = "N/A";
+                            if (LEVEL_REQ[datum.market_item_name]) {
+                                levelReq = (LEVEL_REQ[datum.market_item_name]);
+                                datum.levelReq = levelReq;
+                            }
+                            else {
+                                datum.levelReq = "N/A";
+                            }
+                            //console.log(levelReq);
+                            break;
+                        }
+                        case "other_equipment": {
+                            datum.perCoin = Number.MAX_SAFE_INTEGER;
+                            datum.perCoinLabel = "";
+                            let levelReq = (LEVEL_REQ[datum.market_item_name]);
+                            datum.levelReq = levelReq;
+                            //console.log(levelReq);
+                            break;
+                        }
+                        case "armour": {
+                            datum.perCoin = Number.MAX_SAFE_INTEGER;
+                            datum.perCoinLabel = "";
+                            let levelReq = "N/A";
+                            if (LEVEL_REQ[datum.market_item_name]) {
+                                levelReq = (LEVEL_REQ[datum.market_item_name]);
+                                datum.levelReq = levelReq;
+                            }
+                            else {
+                                datum.levelReq = "N/A";
+                            }
+                            //console.log(levelReq);
+                            break;
+                        }
+                        default: {
+                            datum.perCoin = Number.MAX_SAFE_INTEGER;
+                            datum.perCoinLabel = "";
+                            datum.levelReq = "N/A";
+                            break;
+                        }
+                    }
+                });
                 Object.values(bestList).forEach(bestCatList => bestCatList.forEach(datum => datum.best=true));
-                const sortMethod = self.getConfig("sortMethod");
-                switch(sortMethod) {
-                    case "timeDESC": {
-                        data = data.sort((a, b) => b.market_item_post_timestamp - a.market_item_post_timestamp);
-                        break;
-                    }
-                    case "timeASC": {
-                        data = data.sort((a, b) => a.market_item_post_timestamp - b.market_item_post_timestamp);
-                        break;
-                    }
-                    case "priceASC": {
-                        data = data.sort((a, b) => {
-                            if(a.perCoin != b.perCoin && typeof a.perCoin==="number" && typeof b.perCoin==="number") {
-                                return a.perCoin - b.perCoin;
-                            }
-                            return a.market_item_price_each - b.market_item_price_each;
-                        });
 
-                        // DEBUG
-                        //data.filter(x => x.market_item_category == "cooked_fish").forEach(d => {
-                        //    console.log(`${d.market_item_name} ${d.perCoin} ${d.market_item_price_each}`);
-                        //});
-                        //
+                //console.log(self.lastCategoryFilter);
+                //console.log(self.lastSortIndex);
+                //console.log(self.lastBrowsedItem);
+                if(item !== self.lastBrowsedItem)
+                    self.lastSortIndex = 0;
+                self.currentTableData = data;
+                self.filterTable(item === "all" ? self.lastCategoryFilter : data[0].market_item_category);
+                
+                hide_element("market-loading");
+                show_element("market-table");
+            });
 
-                        break;
-                    }
-                    case "priceDESC": {
-                        data = data.sort((a, b) => {
-                            if(a.perCoin != b.perCoin && typeof a.perCoin==="number" && typeof b.perCoin==="number") {
-                                return b.perCoin - a.perCoin;
-                            }
-                            return b.market_item_price_each - a.market_item_price_each;
-                        });
-                        break;
-                    }
-                }
-                // console.log(data);
-                let html = "<tr><th>ITEM</th><th></th><th>AMOUNT</th><th>PRICE EACH</th><th>EXTRA INFO</th><th>CATEGORY</th><th>EXPIRES IN</th></tr>";
-                // in case you want to add any extra data to the table but still use this script
-                if(typeof window.ModifyMarketDataHeader === "function") {
-                    html = window.ModifyMarketDataHeader(html);
-                }
+        }
 
-                data.forEach(datum => {
+        updateTable() {
+            let html = `<tr>
+                            <th>ITEM</th>
+                            <th></th>
+                            <th>AMOUNT</th>
+                            <th class="actions" onclick="IdlePixelPlus.plugins.market.marketHeaderOnClick(event);">PRICE EACH</th>
+                            <th>EXTRA INFO</th>
+                            <th>CATEGORY</th>
+                            <th>EXPIRES IN</th>
+                        </tr>`;
+            // in case you want to add any extra data to the table but still use this script
+            if(typeof window.ModifyMarketDataHeader === "function") {
+                html = window.ModifyMarketDataHeader(html);
+            }
+
+            this.currentTableData.forEach(datum => {
+                if(!datum.hidden) {
                     let market_id = datum.market_id;
                     let player_id = datum.player_id;
                     let item_name = datum.market_item_name;
@@ -906,65 +962,47 @@
                     let category = datum.market_item_category;
                     let timestamp = datum.market_item_post_timestamp;
                     let perCoinLabel = datum.perCoinLabel;
-                    let best = datum.best && self.getConfig("highlightBest");
+                    let best = datum.best && this.getConfig("highlightBest");
                     let levelReq = datum.levelReq;
                     let your_entry = "";
 
-                    if(listofAlts.indexOf(player_id) != -1) {
-                        // Remove the alts listing from the market
-                    } else {
-                        if(Items.getItem("player_id") == player_id) {
-                            your_entry = "<span class='color-grey font-small'><br /><br />(Your Item)</span>";
-                        }
+                    if(Items.getItem("player_id") == player_id) {
+                        your_entry = "<span class='color-grey font-small'><br /><br />(Your Item)</span>";
+                    }
 
-                        let rowHtml = "";
-                        rowHtml += `<tr onclick="Modals.market_purchase_item('${market_id}', '${item_name}', '${amount}', '${price_each}'); IdlePixelPlus.plugins.market.applyMaxAmountBuyIfConfigured();" class="hover${ best ? ' cheaper' : '' }">`;
-                        rowHtml += `<td>${Items.get_pretty_item_name(item_name)}${your_entry}</td>`;
-                        rowHtml += `<td><img src="https://d1xsc8x7nc5q8t.cloudfront.net/images/${item_name}.png" /></td>`;
-                        rowHtml += `<td>${amount}</td>`;
-                        rowHtml += `<td><img src="https://d1xsc8x7nc5q8t.cloudfront.net/images/coins.png" /> ${Market.get_price_after_tax(price_each)}`;
-                        if(perCoinLabel) {
-                            rowHtml += `<br /><span style="font-size: 80%; opacity: 0.8">${perCoinLabel}</span>`;
-                        }
-                        rowHtml += `</td>`;
-                        rowHtml += `<td>${levelReq}</td>`;
-                        rowHtml += `<td>${category}</td>`;
-                        rowHtml += `<td>${Market._get_expire_time(timestamp)}</td>`;
-                        rowHtml += `</tr>`;
+                    let rowHtml = "";
+                    rowHtml += `<tr onclick="Modals.market_purchase_item('${market_id}', '${item_name}', '${amount}', '${price_each}'); IdlePixelPlus.plugins.market.applyMaxAmountBuyIfConfigured();" class="hover${ best ? ' cheaper' : '' }">`;
+                    rowHtml += `<td>${Items.get_pretty_item_name(item_name)}${your_entry}</td>`;
+                    rowHtml += `<td><img src="https://d1xsc8x7nc5q8t.cloudfront.net/images/${item_name}.png" /></td>`;
+                    rowHtml += `<td>${amount}</td>`;
+                    rowHtml += `<td><img src="https://d1xsc8x7nc5q8t.cloudfront.net/images/coins.png" /> ${Market.get_price_after_tax(price_each)}`;
+                    if(perCoinLabel) {
+                        rowHtml += `<br /><span style="font-size: 80%; opacity: 0.8">${perCoinLabel}</span>`;
+                    }
+                    rowHtml += `</td>`;
+                    rowHtml += `<td>${levelReq}</td>`;
+                    rowHtml += `<td>${category}</td>`;
+                    rowHtml += `<td>${Market._get_expire_time(timestamp)}</td>`;
+                    rowHtml += `</tr>`;
 
-                        // in case you want to add any extra data to the table but still use this script
-                        if(typeof window.ModifyMarketDataRow === "function") {
-                            rowHtml = window.ModifyMarketDataRow(datum, rowHtml);
-                        }
-                        html += rowHtml;
-                    }});
-
-                document.getElementById("market-table").innerHTML = html;
-                hide_element("market-loading");
-                show_element("market-table");
+                    // in case you want to add any extra data to the table but still use this script
+                    if(typeof window.ModifyMarketDataRow === "function") {
+                        rowHtml = window.ModifyMarketDataRow(datum, rowHtml);
+                    }
+                    html += rowHtml;
+                }
             });
-
+            document.getElementById("market-table").innerHTML = html;
         }
 
-        createFilterButtons() {
-            const filters = $("#market-category-filters");
-            filters.empty();
-            if(Market.tradables) {
-                const categories = [];
-                Market.tradables.forEach(tradable => {
-                    if(!categories.includes(tradable.category)) {
-                        categories.push(tradable.category);
-                    }
-                });
-                filters.append(`<button data-category="all" onclick="IdlePixelPlus.plugins.market.filterTable('all')">All</button>`);
-                categories.forEach(cat => {
-                    filters.append(`<button data-category="${cat}" onclick="IdlePixelPlus.plugins.market.filterTable('${cat}')">${cat.replace(/_/g, " ").replace(/(^|\s)\w/g, s => s.toUpperCase())}</button>`);
-                });
-            }
+        filterButtonOnClick(category) {
+            this.lastSortIndex = 0;
+            this.lastCategoryFilter = category;
+            this.browseGetTable("all");
+            Modals.toggle("modal-market-select-item");
         }
 
         filterTable(category) {
-
             if(category) {
                 this.lastCategoryFilter = category;
             }
@@ -972,26 +1010,31 @@
                 category = this.lastCategoryFilter || "all";
             }
 
-            $("#market-category-filters button.active").removeClass("active");
-            $(`#market-category-filters button[data-category="${category}"]`).addClass("active");
+            this.configureTableContextMenu(category);
 
-            const rows = $("#market-table tbody tr.hover");
-            if(category=="all") {
-                rows.show();
-            }
-            else {
-                rows.each(function() {
-                    const row = $(this);
-                    const rowCategory = row.find("td:nth-child(6)").text();
-                    if(category == rowCategory) {
-                        row.show();
-                    }
-                    else {
-                        row.hide();
-                    }
-                });
+            this.currentTableData.forEach(datum => {
+                if(category === "all")
+                    datum.hidden = false;
+                else
+                    datum.hidden = !(category === datum.market_item_category);
+            });
 
-            }
+            this.sortTable(this.lastSortIndex);
+            this.updateTable();
+        }
+
+        sortTable(sortDataIndex) {
+            // Split the table data into a visible and hidden array in order to sort the visible one
+            const visible = this.currentTableData.filter(datum => !datum.hidden);
+            const hidden = this.currentTableData.filter(datum => datum.hidden);
+            visible.sort((a, b) => {
+                switch(sortDataIndex) {
+                    case 0: return a.market_item_price_each - b.market_item_price_each;
+                    default: return a.ratios[sortDataIndex - 1] - b.ratios[sortDataIndex - 1];
+                }
+            });
+            this.currentTableData = visible.concat(hidden);
+            this.lastSortIndex = sortDataIndex;
         }
 
         refreshMarket(disableButtonForABit) {
@@ -1233,11 +1276,6 @@
             //console.log("Fetched data: ", data); // Debugging line
             const dataByDay = this.splitHistoryDataByDays(data);
 
-            const historyChartCustomTooltip = (tooltipItems) => {
-                const amountsSum = dataByDay[tooltipItems[0].dataIndex].data.map(datum => datum.amount).reduce((a, b) => a + b, 0);
-                return `Transaction Volume: ${amountsSum}`;
-            }
-
             $("#history-chart").show();
             if(this.historyChart === undefined){
                 this.historyChart = new Chart($("#history-chart"), {
@@ -1251,13 +1289,6 @@
                         interaction: {
                             intersect: false,
                             mode: 'index',
-                        },
-                        plugins: {
-                            tooltip: {
-                                callbacks: {
-                                    footer: historyChartCustomTooltip
-                                }
-                            }
                         }
                     }
                 });
@@ -1269,6 +1300,11 @@
             const averagePrices = dataByDay.map(datum => Math.round(datum.data.map(d => d.price * d.amount)
                                                                               .reduce((a, b) => a + b, 0) / datum.data.map(d => d.amount)
                                                                                                                       .reduce((a, b) => a + b, 0)));
+            
+            this.historyChart.options.plugins.tooltip.callbacks.footer = (tooltipItems) => {
+                const amountsSum = dataByDay[tooltipItems[0].dataIndex].data.map(datum => datum.amount).reduce((a, b) => a + b, 0);
+                return `Transaction Volume: ${amountsSum}`;
+            }
             this.historyChart.data = {
                 labels: dataByDay.map(datum => datum.date.toString().match(/^[a-zA-Z]+\s([a-zA-Z]+\s[0-9]{1,2})\s/)[1]),
                 datasets: [{
@@ -1345,7 +1381,6 @@
         }
 
         deleteMarketWatcher(item) {
-            console.log("Delete market watcher " + item);
             $(`#watched-item-${item}`).remove();
             if($("#market-watcher-div").find(".market-watched-item").length == 0) {
                 $("#market-watcher-div").hide();
@@ -1458,6 +1493,54 @@
                     $("#market-watcher-div").show();
                 }
             }
+        }
+
+        configureTableContextMenu(category) {
+            const contextMenu = document.getElementById("market-sort-context-menu").getElementsByClassName("menu").item(0);
+            for(let child of Array.from(contextMenu.querySelectorAll('li:not([id="context-menu-price-each-item"])'))) {
+                child.remove();
+            }
+            if(category in CATEGORY_RATIOS) {
+                for(let i = 0; i < CATEGORY_RATIOS[category].length; i++) {
+                    contextMenu.innerHTML +=`<li id="ratio-${i}" onclick='IdlePixelPlus.plugins.market.contextMenuSelectOnClick(\"ratio-${i}\");'>
+                                                <span> ${CATEGORY_RATIOS[category][i]}</span> 
+                                            </li>`;
+                }
+                if(this.lastSortIndex == 0)
+                    this.contextMenuChangeSelected("context-menu-price-each-item");
+                else
+                    this.contextMenuChangeSelected(`ratio-${this.lastSortIndex - 1}`);
+            }
+            else {
+                this.lastSortIndex = 0;
+                this.contextMenuChangeSelected("context-menu-price-each-item");
+            }
+        }
+
+        contextMenuChangeSelected(menuItem) {
+            const e = document.getElementById("market-sort-context-menu-selected");
+            if(e)
+                e.remove();
+            document.getElementById(menuItem).innerHTML += `<span id="market-sort-context-menu-selected">&#x2714;</span>`;
+        }
+
+        contextMenuSelectOnClick(menuItem) {
+            this.contextMenuChangeSelected(menuItem);
+
+            const sortDataIndex = (menuItem == "context-menu-price-each-item") ? 0 : parseInt(menuItem.replace(/[^0-9]/g, "")) + 1;
+            this.sortTable(sortDataIndex);
+            this.updateTable();
+        }
+
+        marketHeaderOnClick(event) { 
+            document.addEventListener("click", () => document.getElementById("market-sort-context-menu").style.display = "none", { once: true });
+
+            var menu = document.getElementById("market-sort-context-menu");  
+            menu.style.display = 'block'; 
+            menu.style.left = event.pageX + "px"; 
+            menu.style.top = event.pageY + "px";
+
+            event.stopPropagation();
         }
     }
 
