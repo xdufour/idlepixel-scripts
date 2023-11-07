@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         IdlePixel Market Overhaul - Wynaan Fork
 // @namespace    com.anwinity.idlepixel
-// @version      1.3.6
+// @version      1.3.7
 // @description  Overhaul of market UI and functionality.
 // @author       Original Author: Anwinity || Modded By: GodofNades/Zlef/Wynaan
 // @license      MIT
@@ -408,12 +408,6 @@
                 margin: 6px 6px;
                 padding: 6px 6px;
               }
-              #modal-market-select-item.condensed #modal-market-select-item-section .select-item-tradables-catagory:hover {
-                box-shadow: 4px 4px 8px #0e0e0e;
-                border-color: #252525;
-                cursor: pointer;
-              }
-
               #modal-market-select-item.condensed #modal-market-select-item-section .select-item-tradables-catagory hr {
                 margin-top: 2px;
                 margin-bottom: 2px;
@@ -470,6 +464,11 @@
               }
               #history-chart-div {
                 margin: 0 auto;
+              }
+              .hoverable-div:hover {
+                box-shadow: 4px 4px 8px #0e0e0e;
+                border-color: #252525;
+                cursor: pointer;
               }
             </style>
             `);
@@ -641,15 +640,23 @@
                 if(childList && childList.target && childList.target.id === "modal-market-select-item-section") {
                     const elements = document.getElementById(childList.target.id).querySelectorAll(".select-item-tradables-catagory");
                     elements.forEach(e => {
+                        let isSellModal = false;
+
                         e.classList.add("bold");
-                        e.onclick = () => this.filterButtonOnClick(e.textContent.toLowerCase().replace(" ", "_"));
                         e.innerHTML = e.innerHTML.replace(/[a-zA-Z_]+<hr>/, e.textContent.split("_").map(w => w[0].toUpperCase() + w.slice(1).toLowerCase()).join(" ") + "<hr>");
 
                         e.querySelectorAll("div").forEach(d => {
-                            d.addEventListener("click", function(event) {
-                                event.stopPropagation();
-                            });
+                            isSellModal |= /Modals\.market_configure_item_to_sell/.test(d.onclick.toString());
+                            if(d.parentNode.textContent.toLowerCase() != "all") {
+                                d.addEventListener("click", function(event) {
+                                    event.stopPropagation();
+                                });
+                            }
                         });
+                        if(!isSellModal) {
+                            e.onclick = () => this.filterButtonOnClick(e.textContent.toLowerCase().replace(" ", "_"));
+                            e.classList.add("hoverable-div");
+                        }
                     });
                 }
             }).observe(document.getElementById("modal-market-select-item"), {
@@ -678,7 +685,7 @@
                      <img src="https://idlepixel.s3.us-east-2.amazonaws.com/images/player_market.png" class="w20" title="market_alert">
                      <span id="notification-market-item-label" class="color-white"> Market Alert</span>
                 </div>`);
-            $("#history-chart").prev().before(`
+            $("#history-chart-div").prev().before(`
                 <center>
                 <div id="market-watcher-div" class="select-item-tradables-catagory shadow" align="left" style="width: ${sellSlotWidth * 3}px; margin: 0px; padding: 10pt; background-color: rgb(254, 254, 254); display: none;">
                     <span class="bold">Active watchers</span>
@@ -692,11 +699,10 @@
 
         browseGetTable(item) {
             const self = this;
-            this.lastBrowsedItem = item;
-            if(item != "all") {
-                self.lastCategoryFilter = "all";
+            if(item != this.lastBrowsedItem) {
                 self.lastSortIndex = 0;
             }
+            this.lastBrowsedItem = item;
             if(item == "all") {
                 $("#watch-market-item-button").hide();
                 $("#history-chart-div").hide();
@@ -1002,8 +1008,10 @@
         filterButtonOnClick(category) {
             this.lastSortIndex = 0;
             this.lastCategoryFilter = category;
+            if(category != "all") { // Patch to prevent clicking the "All" button event coming through to the category listener without double-toggling
+                Modals.toggle("modal-market-select-item");
+            }
             this.browseGetTable("all");
-            Modals.toggle("modal-market-select-item");
         }
 
         filterTable(category) {
@@ -1275,12 +1283,12 @@
         }
 
         async fetchMarketHistory(item) {
+            $("#history-chart-div").show();
+
             const response = await fetch(`https://data.idle-pixel.com/market/api/getMarketHistory.php?item=${item}&range=7d`);
             const data = await response.json();
-            //console.log("Fetched data: ", data); // Debugging line
             const dataByDay = this.splitHistoryDataByDays(data);
 
-            $("#history-chart-div").show();
             if(this.historyChart === undefined){
                 this.historyChart = new Chart($("#history-chart"), {
                     type: 'line',
