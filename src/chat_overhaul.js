@@ -17,9 +17,12 @@
         "--chat-text-color": "0, 0, 0",
         "--chat-username-color": "70, 70, 70",
         "--chat-server-msg-tag-color": "0, 82, 71",
+        "--chat-server-msg-tag-bg-color": "0, 214, 186",
         "--chat-server-msg-color": "0, 0, 255",
         "--chat-timestamp-color": "0, 128, 0",
-        "--chat-level-color": "128, 128, 128"
+        "--chat-level-color": "128, 128, 128",
+        "--chat-bg-color": "255, 255, 255",
+        "--chat-outer-bg-color": "166, 252, 255"
     };
 
     class ChatPlugin extends IdlePixelPlusPlugin {
@@ -70,6 +73,7 @@
                         overflow: auto;
                         grid-column: 3;
                         margin: 12pt 12pt 12pt 0pt;
+                        background-color: rgb(var(--chat-outer-bg-color));
                     }
                 }
                 .resizer {
@@ -80,55 +84,59 @@
                     grid-column: 2;
                     margin: 0;
                 }
-                #chat-area > div {
-                    font-size: 13pt;
-                    font-family: 'montserrat', sans-serif;
-                    font-weight: 500;
-                    color: rgba(var(--chat-text-color), 1.0);
-                    > img {
-                        vertical-align: text-bottom;
-                    }
-                    > a.chat-username {
-                        font-weight: bolder;
-                        color: rgba(var(--chat-username-color), 1.0);
-
-                        &.highlighted {
-                            color: #00258c;
-                        }
-                    }
-                    &:has(span.server_message) {
-                        color: rgba(var(--chat-server-msg-color), 1.0);
-                        > span.server_message {
-                            color: rgba(var(--chat-server-msg-tag-color), 1.0);
-                        }
-                    }
-                    > .color-green {
-                        color: rgba(var(--chat-timestamp-color), 1.0);
-                    }
-                    > .color-grey {
-                        color: rgba(var(--chat-level-color), 1.0);
-                    }
-                    &.dimmed {
-                        color: rgba(var(--chat-text-color), 0.3);
-                        > span, a {
-                            color: rgba(var(--chat-text-color), 0.3);
-                            border-color: rgba(var(--chat-text-color), 0.3);
-                            background-color: transparent;
-                            box-shadow: none;
-                        }
-                        > .chat-username {
-                            color: rgba(var(--chat-username-color), 0.2);
-                        }
+                #chat-area {
+                    background-color: rgb(var(--chat-bg-color));
+                    > div {
+                        font-size: 13pt;
+                        font-family: 'montserrat', sans-serif;
+                        font-weight: 500;
+                        color: rgba(var(--chat-text-color), 1.0);
                         > img {
-                            opacity: 0.2;
+                            vertical-align: text-bottom;
+                        }
+                        > a.chat-username {
+                            font-weight: bolder;
+                            color: rgba(var(--chat-username-color), 1.0);
+
+                            &.highlighted {
+                                color: #00258c;
+                            }
+                        }
+                        &:has(span.server_message) {
+                            color: rgba(var(--chat-server-msg-color), 1.0);
+                            > span.server_message {
+                                color: rgba(var(--chat-server-msg-tag-color), 1.0);
+                                background-color: rgba(var(--chat-server-msg-tag-bg-color), 1.0);
+                            }
+                        }
+                        > .color-green {
+                            color: rgba(var(--chat-timestamp-color), 1.0);
+                        }
+                        > .color-grey {
+                            color: rgba(var(--chat-level-color), 1.0);
+                        }
+                        &.dimmed {
+                            color: rgba(var(--chat-text-color), 0.3);
+                            > span, a {
+                                color: rgba(var(--chat-text-color), 0.3);
+                                border-color: rgba(var(--chat-text-color), 0.3);
+                                background-color: transparent;
+                                box-shadow: none;
+                            }
+                            > .chat-username {
+                                color: rgba(var(--chat-username-color), 0.2);
+                            }
+                            > img {
+                                opacity: 0.2;
+                            }
+                        }
+                        > span:not(:first-child):not(:empty) {
+                            border-radius: 5pt;
+                            display: inline-block;
+                            height: 1.5em;
+                            padding: 0px 4px 0px 4px;
                         }
                     }
-                }
-                #chat-area > div > span:not(:first-child):not(:empty) {
-                    border-radius: 5pt;
-                    display: inline-block;
-                    height: 1.5em;
-                    padding: 0px 4px 0px 4px;
                 }
                 div:has(> .chat-area-input) {
                     display: flex;
@@ -301,12 +309,15 @@
             console.log(uitConfig);
 
             const uitCustomizationConfigMap = [
-                {enable: "font-color-enabled-chat-area-chat-username", config: "font-color-chat-area-chat-username", cssProperty: "--chat-username-color"},
-                {enable: "font-color-enabled-chat-area", config: "font-color-chat-area", cssProperty: "--chat-text-color"},
-                {enable: "font-color-enabled-chat-area-server_message", config: "font-color-chat-area-server_message", cssProperty: "--chat-server-msg-tag-color"},
-                {enable: "serverMessageTextOverrideEnabled", config: "serverMessageTextOverrideColor", cssProperty: "--chat-server-msg-color"},
-                {enable: "font-color-enabled-chat-area-color-green", config: "font-color-chat-area-color-green", cssProperty: "--chat-timestamp-color"},
-                {enable: "font-color-enabled-chat-area-color-grey", config: "font-color-chat-area-color-grey", cssProperty: "--chat-level-color"}
+                {enable: "font-color-enabled-chat-area-chat-username",  config: "font-color-chat-area-chat-username",   cssProperty: "--chat-username-color"},
+                {enable: "font-color-enabled-chat-area",                config: "font-color-chat-area",                 cssProperty: "--chat-text-color"},
+                {enable: "font-color-enabled-chat-area-server_message", config: "font-color-chat-area-server_message",  cssProperty: "--chat-server-msg-tag-color"},
+                {enable: "color-enabled-chat-area-server_message",      config: "color-chat-area-server_message",       cssProperty: "--chat-server-msg-tag-bg-color"},
+                {enable: "serverMessageTextOverrideEnabled",            config: "serverMessageTextOverrideColor",       cssProperty: "--chat-server-msg-color"},
+                {enable: "font-color-enabled-chat-area-color-green",    config: "font-color-chat-area-color-green",     cssProperty: "--chat-timestamp-color"},
+                {enable: "font-color-enabled-chat-area-color-grey",     config: "font-color-chat-area-color-grey",      cssProperty: "--chat-level-color"},
+                {enable: "color-enabled-chat-area",                     config: "color-chat-area",                      cssProperty: "--chat-bg-color"},
+                {enable: "color-enabled-game-chat",                     config: "color-game-chat",                      cssProperty: "--chat-outer-bg-color"}
             ];
 
             uitCustomizationConfigMap.forEach((customization) => {
@@ -322,12 +333,13 @@
             // and therefore takes precedence over CSS classes
             const originalUpdateColors = IdlePixelPlus.plugins["ui-tweaks"].updateColors;
             IdlePixelPlus.plugins["ui-tweaks"].updateColors = function(filter) {
-                if(!filter || filter.filter(f => /^#chat/.test(filter)).length > 0) {
+                console.log(filter);
+                if(!filter)
+                    originalUpdateColors.apply(this, ["body", ".top-bar", "#menu-bar", "#panels", "#panels .color-grey", "#panels .font-large"]);
+                else if (filter.filter(f => /^#chat/.test(f)).length > 0)
                     return;
-                }
-                else {
+                else
                     originalUpdateColors.apply(this, arguments);
-                }
             }
             // Wrap UIT's onConfigChanged to set css properties accordingly
             const originalOnConfigsChanged = IdlePixelPlus.plugins["ui-tweaks"].onConfigsChanged;
