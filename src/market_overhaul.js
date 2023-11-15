@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         IdlePixel Market Overhaul - Wynaan Fork
 // @namespace    com.anwinity.idlepixel
-// @version      1.3.7
+// @version      1.4.0
 // @description  Overhaul of market UI and functionality.
 // @author       Original Author: Anwinity || Modded By: GodofNades/Zlef/Wynaan
 // @license      MIT
@@ -206,6 +206,28 @@
         cooked_fish: ["Coins/Energy"]
     };
 
+    const THEME_DEFAULTS = {
+        default: {
+            colorPanelsOutline: "#ffffff",
+            colorPanelsBg:      "#ffffff",
+            colorItemSlotsBg:   "#00ffdd",
+            colorRowOdd:        "#c3ebe9",
+            colorRowEven:       "#c3ebe9",
+            colorText:          "#000000"
+        },
+        dark: {
+            colorPanelsOutline: "#2a2a2a",
+            colorPanelsBg:      "#333333",
+            colorItemSlotsBg:   "#333333",
+            colorRowOdd:        "#333333",
+            colorRowEven:       "#444444",
+            colorText:          "#cccccc"
+        }
+    };
+
+    const configurableStyles = document.createElement("style");
+    document.head.appendChild(configurableStyles);
+
     class MarketPlugin extends IdlePixelPlusPlugin {
         constructor() {
             super("market", {
@@ -217,10 +239,8 @@
                 },
                 config: [
                     {
-                        id: "condensed",
-                        label: "Condensed UI",
-                        type: "boolean",
-                        default: true
+                        label: "------------------------------------------------<br/>Preferences<br/>------------------------------------------------",
+                        type: "label"
                     },
                     {
                         id: "highlightBest",
@@ -236,13 +256,13 @@
                     },
                     {
                         id: "marketSoldNotification",
-                        label: "Show a notification when you have items to collect in the market.",
+                        label: "Notification on item sold",
                         type: "boolean",
                         default: true
                     },
                     {
                         id: "altIDList",
-                        label: "List the player ID of alts you dont want to see in the player market.",
+                        label: "Player ID blacklist for alts",
                         type: "string",
                         max: 200000,
                         default: "PlaceIDsHere"
@@ -260,6 +280,95 @@
                         label: "Show a 7-days price history when browsing items.",
                         type: "boolean",
                         default: true
+                    },
+                    {
+                        id: "heatPotion",
+                        label: "Account for heat potion use in heat cost",
+                        type: "boolean",
+                        default: true
+                    },
+                    {
+                        label: "------------------------------------------------<br/>Theme<br/>------------------------------------------------",
+                        type: "label"
+                    },
+                    {
+                        id: "condensed",
+                        label: "Condensed UI",
+                        type: "boolean",
+                        default: true
+                    },
+                    {
+                        id: "theme",
+                        label: "Bundled theme",
+                        type: "select",
+                        options: ["Default", "Dark"],
+                        default: "Default"
+                    },
+                    {
+                        id: "colorTextEnabled",
+                        label: "Change text color",
+                        type: "boolean",
+                        default: false
+                    },
+                    {
+                        id: "colorText",
+                        label: "Text color",
+                        type: "color",
+                        default: THEME_DEFAULTS.default.text
+                    },
+                    {
+                        id: "colorItemSlotsBgEnabled",
+                        label: "Change item slots background color",
+                        type: "boolean",
+                        default: false
+                    },
+                    {
+                        id: "colorItemSlotsBg",
+                        label: "Panels background color",
+                        type: "color",
+                        default: THEME_DEFAULTS.default.bgItemSlots
+                    },
+                    {
+                        id: "colorPanelsBgEnabled",
+                        label: "Change panels background color",
+                        type: "boolean",
+                        default: false
+                    },
+                    {
+                        id: "colorPanelsBg",
+                        label: "Panels background color",
+                        type: "color",
+                        default: THEME_DEFAULTS.default.bgPanels
+                    },
+                    {
+                        id: "colorPanelsOutlineEnabled",
+                        label: "Change panels outline color",
+                        type: "boolean",
+                        default: false
+                    },
+                    {
+                        id: "colorPanelsOutline",
+                        label: "Panels outline color",
+                        type: "color",
+                        default: THEME_DEFAULTS.default.bgOutline
+                    },
+                    {
+                        id: "colorRowAccentsEnabled",
+                        label: "Change table row accents color",
+                        type: "boolean",
+                        default: false
+                    },
+                    {
+                        id: "colorRowOdd",
+                        label: "Row accent color 1",
+                        type: "color",
+                        default: THEME_DEFAULTS.default.rowAccent1
+                    },
+                    {
+                        id: "colorRowEven",
+                        label: "Row accent color 2",
+                        type: "color",
+                        default: THEME_DEFAULTS.default.rowAccent2
                     }
                 ]
             });
@@ -272,6 +381,8 @@
 
         onConfigsChanged() {
             this.applyCondensed(this.getConfig("condensed"));
+            this.loadStyles();
+
             if(this.getConfig("marketSoldNotification")) {
                 this.updateMarketNotifications();
             } else {
@@ -292,7 +403,7 @@
             sideCar.onclick = function () {
                 IdlePixelPlus.plugins.market.collectMarketButton();
             }
-            sideCar.style='margin-right: 4px; margin-bottom: 4px; display: none';
+            sideCar.style='margin-right: 4px; margin-bottom: 4px; display: none; cursor: pointer;';
 
             var elem = document.createElement("img");
             elem.setAttribute("src", "https://idlepixel.s3.us-east-2.amazonaws.com/images/player_market.png");
@@ -358,6 +469,105 @@
             }
         }
 
+        getStyleFromConfig(enableId, colorId) {
+            return this.getConfig(enableId) ? this.getConfig(colorId) : THEME_DEFAULTS[this.getConfig("theme").toLowerCase()][colorId];
+        }
+
+        loadStyles() {
+            const colorText = this.getStyleFromConfig("colorTextEnabled", "colorText");
+            const colorPanelsOutline = this.getStyleFromConfig("colorPanelsOutlineEnabled", "colorPanelsOutline");
+            const colorRowOdd = this.getStyleFromConfig("colorRowAccentsEnabled", "colorRowOdd");
+            const colorRowEven = this.getStyleFromConfig("colorRowAccentsEnabled", "colorRowEven");
+            const colorItemSlotsBg = this.getStyleFromConfig("colorItemSlotsBgEnabled", "colorItemSlotsBg");
+            const colorPanelsBg = this.getStyleFromConfig("colorPanelsBgEnabled", "colorPanelsBg");
+            const styles = `
+            #market-table {
+                margin-top: 0.5em !important;
+                border-spacing:0 4px !important;
+                border-collapse: separate;
+                background: ${colorPanelsOutline} !important;
+                border-width: 4px;
+                border-radius: 5pt;
+                padding: 4px;
+                > * tr th {
+                    background: ${colorPanelsOutline};
+                    color: ${colorText};
+                }
+                > * tr:nth-child(even) {
+                    background: ${colorRowOdd};
+                    color: ${colorText};
+                }
+                > * tr:nth-child(odd) {
+                    background: ${colorRowEven};
+                    color: ${colorText};
+                }
+                > * tr.cheaper {
+                    background-color: rgb(50, 205, 50, 0.25);
+                }
+                > * td {
+                    background: inherit;
+                    color: inherit;
+                    &:first-child {
+                        border-top-left-radius: 5pt;
+                        border-bottom-left-radius: 5pt;
+                    }
+                    &:last-child {
+                        border-top-right-radius: 5pt;
+                        border-bottom-right-radius: 5pt;
+                    }
+                }
+            }
+            div[id^=player-market-slot] {
+                border-spacing:0 4px;
+                border-collapse: separate;
+                border-radius: 5pt;
+                border: 2px solid #00000022;
+                background: ${colorItemSlotsBg};
+                color: ${colorText};
+                > div, span {
+                    color: ${colorText} !important;
+                }
+                > button {
+                    border-radius: 5pt;
+                    border: 2px solid #00000022;
+                    box-shadow: none;
+                }
+                > #panel-sell-text {
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    height: 100%;
+                    font-size: 20pt;
+                    color: ${colorText + "55"} !important;
+                }
+            } 
+            #market-watcher-div {
+                border-radius: 5pt;
+                border: 2px solid #00000022;
+                background: ${colorPanelsBg};
+                margin: 0px;
+                color: ${colorText};
+                > div[id^=watched-item] {
+                    color: black;
+                }
+            }
+            #history-chart-div {
+                margin: 0 auto;
+                border-radius: 5pt;
+                border: 2px solid #00000022;
+                background: ${colorPanelsBg};
+            }`;
+            if(this.historyChart) {
+                this.historyChart.options.scales.x.ticks.color = colorText;
+                this.historyChart.options.scales.y.ticks.color = colorText;
+            }
+            else {
+                Chart.defaults.color = colorText;
+            }
+
+            configurableStyles.innerHTML = styles;
+        }
+
         onLogin() {
             this.addMarketNotifications();
             if(this.getConfig("marketSoldNotification")) {
@@ -367,109 +577,93 @@
 
             $("head").append(`
             <style id="styles-market">
-
-              #market-table {
-                  margin-top: 0.5em !important;
-              }
-              #market-table tr.cheaper {
-                  background-color: rgb(50, 205, 50, 0.25);
-              }
-              #market-table tr.cheaper > td {
-                  background-color: rgb(50, 205, 50, 0.25);
-              }
-              #panel-player-market.condensed > center {
-                  display: flex;
-                  flex-direction: row;
-                  justify-content: center;
-              }
-              #panel-player-market.condensed div.player-market-slot-base {
-              	  height: 400px;
-              }
-              #panel-player-market.condensed div.player-market-slot-base hr {
-                  margin-top: 2px;
-                  margin-bottom: 4px;
-              }
-              #panel-player-market.condensed div.player-market-slot-base br + #panel-player-market.condensed div.player-market-slot-base br {
-                  display: none;
-              }
-              #panel-player-market.condensed div.player-market-slot-base[id^="player-market-slot-occupied"] button {
-                  padding: 2px;
-              }
-
-              #panel-player-market.condensed #market-table th {
-              	padding: 2px 4px;
-              }
-
-              #panel-player-market.condensed #market-table td {
-              	padding: 2px 4px;
-              }
-
-              #modal-market-select-item.condensed #modal-market-select-item-section .select-item-tradables-catagory {
-                margin: 6px 6px;
-                padding: 6px 6px;
-              }
-              #modal-market-select-item.condensed #modal-market-select-item-section .select-item-tradables-catagory hr {
-                margin-top: 2px;
-                margin-bottom: 2px;
-              }
-              .hide {
-                display: none;
-              }
-              .bold {
-                font-weight: bold;
-              }
-              .select-item-tradables-catagory {
-                border-radius: 5pt;
-              }
-              #market-table th.actions:hover {
-                color: gray;
-                cursor: pointer;
-              }
-              .context-menu { 
-                position: absolute; 
-              } 
-              .menu {
-                display: flex;
-                flex-direction: column;
-                background-color: rgb(240, 240, 240);
-                border-radius: 5pt;
-                box-shadow: 4px 4px 8px #0e0e0e;
-                padding: 10px 0;
-                list-style-type: none;
-              }
-              .menu > li {
-                font: inherit;
-                border: 0;
-                padding: 4px 36px 4px 16px;
-                width: 100%;
-                display: flex;
-                align-items: center;
-                position: relative;
-                text-decoration: unset;
-                color: #000;
-                transition: 0.5s linear;
-                -webkit-transition: 0.5s linear;
-                -moz-transition: 0.5s linear;
-                -ms-transition: 0.5s linear;
-                -o-transition: 0.5s linear;
-              }
-              .menu > li:hover {
-                background:#afafaf;
-                color: #15156d;
-                cursor: pointer;
-              }
-              .menu > li > span:not(:first-child) {
-                position: absolute;
-                right: 12px;
-              }
-              #history-chart-div {
-                margin: 0 auto;
-              }
-              .hoverable-div:hover {
-                box-shadow: 4px 4px 8px #0e0e0e;
-                border-color: #252525;
-                cursor: pointer;
-              }
+                #panel-player-market.condensed > center {
+                    display: flex;
+                    flex-direction: row;
+                    justify-content: center;
+                }
+                #panel-player-market.condensed div.player-market-slot-base {
+                    height: 400px;
+                }
+                #panel-player-market.condensed div.player-market-slot-base hr {
+                    margin-top: 2px;
+                    margin-bottom: 4px;
+                }
+                #panel-player-market.condensed div.player-market-slot-base br + #panel-player-market.condensed div.player-market-slot-base br {
+                    display: none;
+                }
+                #panel-player-market.condensed div.player-market-slot-base[id^="player-market-slot-occupied"] button {
+                    padding: 2px;
+                }
+                #panel-player-market.condensed #market-table th {
+                    padding: 2px 4px;
+                }
+                #panel-player-market.condensed #market-table td {
+                    padding: 2px 4px;
+                }
+                #modal-market-select-item.condensed #modal-market-select-item-section .select-item-tradables-catagory {
+                    margin: 6px 6px;
+                    padding: 6px 6px;
+                }
+                #modal-market-select-item.condensed #modal-market-select-item-section .select-item-tradables-catagory hr {
+                    margin-top: 2px;
+                    margin-bottom: 2px;
+                }
+                .hide {
+                    display: none;
+                }
+                .bold {
+                    font-weight: bold;
+                }
+                .select-item-tradables-catagory {
+                    border-radius: 5pt;
+                }
+                #market-table th.actions:hover {
+                    color: gray;
+                    cursor: pointer;
+                }
+                .context-menu { 
+                    position: absolute; 
+                } 
+                .menu {
+                    display: flex;
+                    flex-direction: column;
+                    background-color: rgb(240, 240, 240);
+                    border-radius: 5pt;
+                    box-shadow: 4px 4px 8px #0e0e0e;
+                    padding: 10px 0;
+                    list-style-type: none;
+                }
+                .menu > li {
+                    font: inherit;
+                    border: 0;
+                    padding: 4px 36px 4px 16px;
+                    width: 100%;
+                    display: flex;
+                    align-items: center;
+                    position: relative;
+                    text-decoration: unset;
+                    color: #000;
+                    transition: 0.5s linear;
+                    -webkit-transition: 0.5s linear;
+                    -moz-transition: 0.5s linear;
+                    -ms-transition: 0.5s linear;
+                    -o-transition: 0.5s linear;
+                }
+                .menu > li:hover {
+                    background:#afafaf;
+                    color: #15156d;
+                    cursor: pointer;
+                }
+                .menu > li > span:not(:first-child) {
+                    position: absolute;
+                    right: 12px;
+                }
+                .hoverable-div:hover {
+                    box-shadow: 4px 4px 8px #0e0e0e;
+                    border-color: #252525;
+                    cursor: pointer;
+                }
             </style>
             `);
 
@@ -523,7 +717,6 @@
             </div>`);
             
             // Market table sort menu
-            
             $("#panel-player-market").append(`
             <div id="market-sort-context-menu" class="context-menu" style="display: none"> 
                 <ul class="menu"> 
@@ -599,13 +792,24 @@
             `);
             buyAmountInput.on("input change", () => this.applyTotalBuy());
 
+            // Remove sell buttons
+            document.querySelectorAll("div[id^=player-market-slot-empty] button").forEach(
+                b => {
+                    const click = b.onclick;
+                    b.parentElement.onclick = b.onclick;
+                    const div = document.createElement("div");
+                    div.setAttribute("id", "panel-sell-text");
+                    div.classList.add("hover");
+                    div.innerText = "Sell an item";
+                    b.replaceWith(div);
+                }
+            );
+
             // wrap Market.browse_get_table to capture last selected
             const original_market_browse = Market.browse_get_table;
             Market.browse_get_table = function(item) {
                 return self.browseGetTable(item);
             }
-
-            $("#market-table").css("margin-top", "24px");
 
             // wrap Market.load_tradables to populate category filters
             const original_load_tradables = Market.load_tradables;
@@ -623,10 +827,6 @@
             // Extra buttons beside <BROWSE PLAYER MARKET>
             $(`#panel-player-market button[onclick^="Market.clicks_browse_player_market_button"]`)
                 .first()
-                .after(`<div id="heat-pot-div">
-                           <label for "heat-pot" style="margin-left: 1em; margin-top: 0.6em"> Use Heat Potion:</label>
-                           <input id="heat-pot-checkbox" type="checkbox" style="margin-left: 0.5em" name="heat-pot" onclick="IdlePixelPlus.plugins.market.refreshMarket(false);" checked>
-                       </div>`)
                 .after(`<button id="refresh-market-table-button" type="button" style="height: 44px; margin-left: 0.5em" onclick="IdlePixelPlus.plugins.market.refreshMarket(true);">
                             Refresh
                         </button>`)
@@ -665,6 +865,7 @@
             });
 
             const sellSlotWidth = $(".player-market-slot-base").outerWidth();
+            document.getElementById("market-table").style.minWidth = sellSlotWidth * 3;
             // History chart
             $(`#panel-player-market button[onclick^="Market.clicks_browse_player_market_button"]`).parent()
                 .before(`<center id="history-chart-div" style="display:block; margin-bottom: 0.5em; width: ${sellSlotWidth * 3}px; height: 200px;">
@@ -687,12 +888,13 @@
                 </div>`);
             $("#history-chart-div").prev().before(`
                 <center>
-                <div id="market-watcher-div" class="select-item-tradables-catagory shadow" align="left" style="width: ${sellSlotWidth * 3}px; margin: 0px; padding: 10pt; background-color: rgb(254, 254, 254); display: none;">
+                <div id="market-watcher-div" class="select-item-tradables-catagory shadow" align="left" style="width: ${sellSlotWidth * 3}px; display: none;">
                     <span class="bold">Active watchers</span>
                     <hr style="margin-top: 2px; margin-bottom: 4px;">
                 </div>
                 </center>`);
 
+            this.loadStyles();
             this.applyLocalStorage();
             this.checkWatchers();
         }
@@ -731,12 +933,9 @@
                 //console.log(data);
 
                 const listofAlts = IdlePixelPlus.plugins.market.getConfig("altIDList").replace(";",",").replace(/\s?,\s?/g, ",").toLowerCase().split(',').map(altId => parseInt(altId));
-                const useHeatPot = $("#heat-pot-checkbox").is(':checked');
+                const useHeatPot = self.getConfig("heatPotion");
 
-                if(data.filter(datum => ["logs", "raw_fish"].includes(datum.market_item_category)).length == 0) {
-                    $("#heat-pot-div").hide();
-                } else {
-                    $("#heat-pot-div").show();
+                if(data.filter(datum => ["logs", "raw_fish"].includes(datum.market_item_category)).length > 0) {
                     var coinsPerHeat = 100000;
                     $.ajax({url: `../../market/browse/logs/`, type: "get", async: false, success: function(data) {
                         coinsPerHeat = 1.01 * Math.min(...data.map(datum => datum.market_item_price_each / Cooking.getHeatPerLog(datum.market_item_name)));
@@ -775,7 +974,8 @@
                         case "logs": {
                             let perCoin = (priceAfterTax / (Cooking.getHeatPerLog(datum.market_item_name) * (useHeatPot ? 2 : 1)));
                             let sDPerCoin = (3500 / priceAfterTax);
-                            let charPerCoin = ((priceAfterTax / CHARCOAL_PERC[datum.market_item_name]) / 2);
+                            const charcoalMultiplier = 1 * (window.var_titanium_charcoal_foundry_crafted ? 2 : 1) * (window.var_green_charcoal_orb_absorbed ? 2 : 1);
+                            let charPerCoin = ((priceAfterTax / CHARCOAL_PERC[datum.market_item_name]) / charcoalMultiplier);
                             let levelReq = (LEVEL_REQ[datum.market_item_name]);
                             datum.perCoin = perCoin;
                             datum.levelReq = levelReq;
@@ -1289,14 +1489,23 @@
             const data = await response.json();
             const dataByDay = this.splitHistoryDataByDays(data);
 
+            // Create chart object if uninitialized
             if(this.historyChart === undefined){
                 this.historyChart = new Chart($("#history-chart"), {
                     type: 'line',
                     options: {
                         maintainAspectRatio: false,
                         scales: {
+                            x: {
+                                grid: {
+                                    color: "#77777744"
+                                }
+                            },
                             y: {
-                                beginAtZero: false
+                                beginAtZero: false,
+                                grid: {
+                                    color: "#77777744"
+                                }
                             }
                         },
                         interaction: {
@@ -1328,12 +1537,12 @@
                 {
                     label: 'Average Price',
                     data: averagePrices,
-                    borderColor: 'rgb(15, 47, 137)',
+                    borderColor: 'rgb(50, 50, 210)',
                 },
                 {
                     label: 'Highest Price',
                     data: dataByDay.map(datum => Math.max(...datum.data.map(d => d.price))),
-                    borderColor: 'rgb(147, 10, 10)',
+                    borderColor: 'rgb(180, 20, 20)',
                 }]
             };
             this.historyChart.update();
