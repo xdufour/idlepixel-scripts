@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         IdlePixel Chat Overhaul
 // @namespace    com.anwinity.idlepixel
-// @version      1.1.0
+// @version      1.1.1
 // @description  Overhaul of chat UI and functionality.
 // @author       Wynaan
 // @license      MIT
@@ -14,15 +14,15 @@
     'use strict';
 
     const CSS_VARIABLES_DEFAULTS = {
-        "--chat-text-color": "0, 0, 0",
-        "--chat-username-color": "70, 70, 70",
-        "--chat-server-msg-tag-color": "0, 82, 71",
-        "--chat-server-msg-tag-bg-color": "0, 214, 186",
-        "--chat-server-msg-color": "0, 0, 255",
-        "--chat-timestamp-color": "0, 128, 0",
-        "--chat-level-color": "128, 128, 128",
-        "--chat-bg-color": "255, 255, 255",
-        "--chat-outer-bg-color": "166, 252, 255"
+        "--chat-text-color":                "0, 0, 0",
+        "--chat-username-color":            "70, 70, 70",
+        "--chat-server-msg-tag-color":      "0, 82, 71",
+        "--chat-server-msg-tag-bg-color":   "0, 214, 186",
+        "--chat-server-msg-color":          "0, 0, 255",
+        "--chat-timestamp-color":           "0, 128, 0",
+        "--chat-level-color":               "128, 128, 128",
+        "--chat-bg-color":                  "255, 255, 255",
+        "--chat-outer-bg-color":            "166, 252, 255"
     };
 
     class ChatPlugin extends IdlePixelPlusPlugin {
@@ -47,10 +47,6 @@
         }
 
         onConfigsChanged() {
-            this.applyCondensed(this.getConfig("condensed"));
-        }
-
-        applyCondensed(condensed) {
 
         }
 
@@ -60,20 +56,25 @@
                 :root {
                     ${"".concat(Object.entries(CSS_VARIABLES_DEFAULTS).map(([prop, rgb]) => `${prop}: ${rgb};\n`))}
                 }
-                #content.side-chat {
-                    grid-template-columns: 2fr 10px minmax(300px, 4fr);
-                    > * #chat-increase-size-button, #chat-decrease-size-button {
-                        display: none;
+                #content {
+                    & button {
+                        box-shadow: none;
                     }
-                    > #game-chat {
-                        position: sticky; 
-                        top: calc(12pt + 34pt); 
-                        right: 0;
-                        height: calc(100vh - 24pt - 34pt); 
-                        overflow: auto;
-                        grid-column: 3;
-                        margin: 12pt 12pt 12pt 0pt;
-                        background-color: rgb(var(--chat-outer-bg-color));
+                    &.side-chat {
+                        grid-template-columns: 2fr 10px minmax(300px, 4fr) !important;
+                        > * #chat-increase-size-button, #chat-decrease-size-button {
+                            display: none;
+                        }
+                        > #game-chat {
+                            position: sticky; 
+                            top: calc(12pt + 34pt); 
+                            right: 0;
+                            height: calc(100vh - 24pt - 34pt); 
+                            overflow: auto;
+                            grid-column: 3;
+                            margin: 12pt 12pt 12pt 0pt;
+                            background-color: rgb(var(--chat-outer-bg-color));
+                        }
                     }
                 }
                 .resizer {
@@ -86,11 +87,13 @@
                 }
                 #chat-area {
                     background-color: rgb(var(--chat-bg-color));
+                    border-color: rgb(var(--chat-bg-color));
                     > div {
                         font-size: 13pt;
                         font-family: 'montserrat', sans-serif;
                         font-weight: 500;
                         color: rgba(var(--chat-text-color), 1.0);
+                        word-break: break-word;
                         > img {
                             vertical-align: text-bottom;
                         }
@@ -99,7 +102,7 @@
                             color: rgba(var(--chat-username-color), 1.0);
 
                             &.highlighted {
-                                color: #00258c;
+                                color: #9444c9 !important;
                             }
                         }
                         &:has(span.server_message) {
@@ -116,15 +119,15 @@
                             color: rgba(var(--chat-level-color), 1.0);
                         }
                         &.dimmed {
-                            color: rgba(var(--chat-text-color), 0.3);
+                            color: rgba(var(--chat-text-color), 0.3) !important;
                             > span, a {
-                                color: rgba(var(--chat-text-color), 0.3);
+                                color: rgba(var(--chat-text-color), 0.3) !important;
                                 border-color: rgba(var(--chat-text-color), 0.3);
                                 background-color: transparent;
                                 box-shadow: none;
                             }
                             > .chat-username {
-                                color: rgba(var(--chat-username-color), 0.2);
+                                color: rgba(var(--chat-username-color), 0.2) !important;
                             }
                             > img {
                                 opacity: 0.2;
@@ -149,7 +152,6 @@
             `);
 
             const autoScrollButton = document.getElementById("chat-auto-scroll-button");
-            const chatClearButton = document.getElementById("chat-clear-button");
 
             const gameChat = document.getElementById("game-chat");
             const gameScreen = document.getElementById("game-screen");
@@ -157,7 +159,6 @@
             autoScrollButton.style.removeProperty("max-height");
             autoScrollButton.style.color = "green";
             autoScrollButton.style.marginRight = "0.3em";
-            chatClearButton.style.removeProperty("color");
             
             // Autoscrolling detection
             const chatArea = document.getElementById("chat-area");
@@ -269,13 +270,20 @@
             function initDrag(e) { 
                 document.documentElement.addEventListener("mousemove", doDrag, false);
                 document.documentElement.addEventListener("mouseup", stopDrag, false);
+                document.body.style.cursor = 'e-resize';
             }
 
             function doDrag(e) {
-                if(e.clientX < window.innerWidth - 324)
-                    gameScreen.style.width = e.clientX + "px";
-                document.body.style.cursor = 'e-resize';
+                const panelsElement = document.getElementById("panels");
+                const menuBarElement = document.getElementById("menu-bar");
+                const minGameScreenWidth = panelsElement.offsetWidth + menuBarElement.offsetWidth + 4;
                 e.preventDefault();
+                if(gameScreen.offsetWidth < minGameScreenWidth && e.clientX < minGameScreenWidth)
+                    gameScreen.style.width = (minGameScreenWidth - 1) + "px";
+                else if(e.clientX > window.innerWidth - 324)
+                    return;
+                else
+                    gameScreen.style.width = e.clientX + "px";
             }
 
             function stopDrag() {
@@ -306,7 +314,7 @@
         applyUITweaksThemes() {
             const uitConfig = IdlePixelPlus.plugins["ui-tweaks"].config;
             const root = document.documentElement;
-            console.log(uitConfig);
+            //console.log(uitConfig);
 
             const uitCustomizationConfigMap = [
                 {enable: "font-color-enabled-chat-area-chat-username",  config: "font-color-chat-area-chat-username",   cssProperty: "--chat-username-color"},
@@ -329,18 +337,6 @@
         }
 
         overrideUITweaksFunctions() {
-            // Wrap UIT's method for updating color schemes since it edits the direct style attributes
-            // and therefore takes precedence over CSS classes
-            const originalUpdateColors = IdlePixelPlus.plugins["ui-tweaks"].updateColors;
-            IdlePixelPlus.plugins["ui-tweaks"].updateColors = function(filter) {
-                console.log(filter);
-                if(!filter)
-                    originalUpdateColors.apply(this, ["body", ".top-bar", "#menu-bar", "#panels", "#panels .color-grey", "#panels .font-large"]);
-                else if (filter.filter(f => /^#chat/.test(f)).length > 0)
-                    return;
-                else
-                    originalUpdateColors.apply(this, arguments);
-            }
             // Wrap UIT's onConfigChanged to set css properties accordingly
             const originalOnConfigsChanged = IdlePixelPlus.plugins["ui-tweaks"].onConfigsChanged;
             IdlePixelPlus.plugins["ui-tweaks"].onConfigsChanged = function() {
