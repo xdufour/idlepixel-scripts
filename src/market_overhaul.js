@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         IdlePixel Market Overhaul - Wynaan Fork
 // @namespace    com.anwinity.idlepixel
-// @version      1.4.0
+// @version      1.4.1
 // @description  Overhaul of market UI and functionality.
 // @author       Original Author: Anwinity || Modded By: GodofNades/Zlef/Wynaan
 // @license      MIT
@@ -239,14 +239,8 @@
                 },
                 config: [
                     {
-                        label: "------------------------------------------------<br/>Preferences<br/>------------------------------------------------",
+                        label: "------------------------------------------------<br/>General<br/>------------------------------------------------",
                         type: "label"
-                    },
-                    {
-                        id: "highlightBest",
-                        label: "Highlight Best",
-                        type: "boolean",
-                        default: true
                     },
                     {
                         id: "autoMax",
@@ -259,13 +253,6 @@
                         label: "Notification on item sold",
                         type: "boolean",
                         default: true
-                    },
-                    {
-                        id: "altIDList",
-                        label: "Player ID blacklist for alts",
-                        type: "string",
-                        max: 200000,
-                        default: "PlaceIDsHere"
                     },
                     //Zlef
                     {
@@ -282,10 +269,51 @@
                         default: true
                     },
                     {
+                        label: "------------------------------------------------<br/>Table<br/>------------------------------------------------",
+                        type: "label"
+                    },
+                    {
+                        id: "highlightBest",
+                        label: "Highlight Best",
+                        type: "boolean",
+                        default: true
+                    },
+                    {
+                        id: "altIDList",
+                        label: "Player ID blacklist for alts",
+                        type: "string",
+                        max: 200000,
+                        default: "PlaceIDsHere"
+                    },
+                    {
                         id: "heatPotion",
                         label: "Account for heat potion use in heat cost",
                         type: "boolean",
                         default: true
+                    },
+                    {
+                        id: "extraInfoColumn",
+                        label: "Show Extra Info on table entries",
+                        type: "boolean",
+                        default: true
+                    },
+                    {
+                        id: "categoryColumn",
+                        label: "Show Category on table entries",
+                        type: "boolean",
+                        default: true
+                    },
+                    {
+                        id: "quickBuyColumn",
+                        label: "Show Quick Buy button on table entries",
+                        type: "boolean",
+                        default: true
+                    },
+                    {
+                        id: "quickBuyAmount",
+                        label: "Quick Buy button amount (0 = max)",
+                        type: "number",
+                        default: 1
                     },
                     {
                         label: "------------------------------------------------<br/>Theme<br/>------------------------------------------------",
@@ -515,6 +543,18 @@
                         border-top-right-radius: 5pt;
                         border-bottom-right-radius: 5pt;
                     }
+                    > button {
+                        border-radius: 3pt;
+                        border: 2px solid #00000022;
+                        padding: 4px;
+                        box-shadow: none;
+                        background-color: ${colorPanelsOutline};
+                        color: ${colorText};
+                        &:disabled {
+                            color: ${colorText + "55"};
+                            pointer-events: none;
+                        }
+                    }
                 }
             }
             div[id^=player-market-slot] {
@@ -577,29 +617,45 @@
 
             $("head").append(`
             <style id="styles-market">
-                #panel-player-market.condensed > center {
-                    display: flex;
-                    flex-direction: row;
-                    justify-content: center;
-                }
-                #panel-player-market.condensed div.player-market-slot-base {
-                    height: 400px;
-                }
-                #panel-player-market.condensed div.player-market-slot-base hr {
-                    margin-top: 2px;
-                    margin-bottom: 4px;
-                }
-                #panel-player-market.condensed div.player-market-slot-base br + #panel-player-market.condensed div.player-market-slot-base br {
-                    display: none;
-                }
-                #panel-player-market.condensed div.player-market-slot-base[id^="player-market-slot-occupied"] button {
-                    padding: 2px;
-                }
-                #panel-player-market.condensed #market-table th {
-                    padding: 2px 4px;
-                }
-                #panel-player-market.condensed #market-table td {
-                    padding: 2px 4px;
+                #panel-player-market {
+                    &.condensed {
+                        > center {
+                            display: flex;
+                            flex-direction: row;
+                            justify-content: center;
+                        }
+                        & div.player-market-slot-base {
+                            height: 400px;
+                        }
+                        & div.player-market-slot-base hr {
+                            margin-top: 2px;
+                            margin-bottom: 4px;
+                        }
+                        & div.player-market-slot-base br + div.player-market-slot-base br {
+                            display: none;
+                        }
+                        & div.player-market-slot-base[id^="player-market-slot-occupied"] {
+                            > button {
+                                padding: 2px;
+                            }
+                            > button[id^="player-market-slot-see-market"] {
+                                width: 90%; 
+                                margin-top: 0.5em; 
+                                margin-bottom: 0.5em; 
+                                background-color: rgb(46, 137, 221);
+                            }
+                            > h2[id^="player-market-slot-item-item-label"] {
+                                font-size: 1.8rem;
+                                margin-bottom: 0;
+                            } 
+                        }
+                        & #market-table th {
+                            padding: 2px 4px;
+                        }
+                        & #market-table td {
+                            padding: 2px 4px;
+                        }
+                    }
                 }
                 #modal-market-select-item.condensed #modal-market-select-item-section .select-item-tradables-catagory {
                     margin: 6px 6px;
@@ -633,31 +689,31 @@
                     box-shadow: 4px 4px 8px #0e0e0e;
                     padding: 10px 0;
                     list-style-type: none;
-                }
-                .menu > li {
-                    font: inherit;
-                    border: 0;
-                    padding: 4px 36px 4px 16px;
-                    width: 100%;
-                    display: flex;
-                    align-items: center;
-                    position: relative;
-                    text-decoration: unset;
-                    color: #000;
-                    transition: 0.5s linear;
-                    -webkit-transition: 0.5s linear;
-                    -moz-transition: 0.5s linear;
-                    -ms-transition: 0.5s linear;
-                    -o-transition: 0.5s linear;
-                }
-                .menu > li:hover {
-                    background:#afafaf;
-                    color: #15156d;
-                    cursor: pointer;
-                }
-                .menu > li > span:not(:first-child) {
-                    position: absolute;
-                    right: 12px;
+                    > li {
+                        font: inherit;
+                        border: 0;
+                        padding: 4px 36px 4px 16px;
+                        width: 100%;
+                        display: flex;
+                        align-items: center;
+                        position: relative;
+                        text-decoration: unset;
+                        color: #000;
+                        transition: 0.5s linear;
+                        -webkit-transition: 0.5s linear;
+                        -moz-transition: 0.5s linear;
+                        -ms-transition: 0.5s linear;
+                        -o-transition: 0.5s linear;
+                        > span:not(:first-child) {
+                            position: absolute;
+                            right: 12px;
+                        }
+                        &:hover {
+                            background:#afafaf;
+                            color: #15156d;
+                            cursor: pointer;
+                        }
+                    }
                 }
                 .hoverable-div:hover {
                     box-shadow: 4px 4px 8px #0e0e0e;
@@ -743,13 +799,19 @@
               Total: <span id="modal-market-configure-item-to-sell-total"></span>
             `);
 
-            // Add See Market button
-            [1, 2, 3].forEach(n => {
-                $(`#player-market-slot-collect-amount-${n}`).next().remove();
-                $(`#player-market-slot-collect-amount-${n}`)
-                    .after(`<button type="button" style="width: 90%; margin-top: 0.5em; margin-bottom: 0.5em; background-color: rgb(46, 137, 221);" onclick="IdlePixelPlus.plugins.market.seeMarketOnClick(${n})">See Market</button>`);
-                $(`#player-market-slot-expires-${n}`).prev().remove();
+            document.querySelectorAll(`button[id^=player-market-slot-collect-amount]`).forEach(b => {
+                // Add See Market button
+                const id = b.id.match(/[1-3]/)[0];
+                b.nextElementSibling.remove();
+                b.insertAdjacentHTML("afterend", `<button type="button" id="player-market-slot-see-market-${id}" onclick="IdlePixelPlus.plugins.market.seeMarketOnClick(${id})">See Market</button>`);
+            
+                // Add event to reset collection button
+                b.addEventListener("click", () => {
+                    b.textContent = b.textContent.replace(/[0-9,]+/, '0');
+                    $("#market-sidecar").hide();
+                });
             });
+            document.querySelectorAll(`span[id^=player-market-slot-expires]`).forEach(s => s.previousElementSibling.remove());
 
             sellAmountInput.on("input change", () => this.applyTotalSell());
             sellPriceInput.on("input change", () => this.applyTotalSell());
@@ -769,13 +831,13 @@
             });
             //End Zlef
 
-            // Add event to reset collection button
-            [1, 2, 3].forEach(n => {
-                $(`button#player-market-slot-collect-amount-${n}`).on("click", function() {
-                    $(this).text($(this).text().replace(/[0-9,]+/, '0'));
-                    $("#market-sidecar").hide();
+            if(this.getConfig("condensed")) {
+                // Remove <br> from between <Amount left> and <Price each>, and reinsert it above title
+                document.querySelectorAll(`span[id^="player-market-slot-item-amount-left"]`).forEach(e => {
+                    const br = e.parentNode.removeChild(e.nextElementSibling);
+                    e.parentNode.querySelector(`h2[id^="player-market-slot-item-item-label"]`).before(br);
                 });
-            });
+            }
 
             const buyModal = $("#modal-market-purchase-item");
             const buyAmountInput = buyModal.find("#modal-market-purchase-item-amount-input");
@@ -783,30 +845,26 @@
             $(document).on('click', '[onclick*="Modals.market_purchase_item"]', this.handlePurchaseClick.bind(this));
             // <-
             buyAmountInput.after(`
-              <button type="button" onclick="IdlePixelPlus.plugins.market.applyOneAmountBuy()">1</button>
-              <button type="button" onclick="IdlePixelPlus.plugins.market.applyMaxAmountBuy()">max</button>
-              <br /><br />
-              Total: <span id="modal-market-purchase-item-total"></span>
-              <br />
-              Owned: <item-display data-format="number" data-key="coins"></item-display>
+                <button type="button" onclick="IdlePixelPlus.plugins.market.applyOneAmountBuy()">1</button>
+                <button type="button" onclick="IdlePixelPlus.plugins.market.applyMaxAmountBuy()">max</button>
+                <br /><br />
+                Total: <span id="modal-market-purchase-item-total"></span>
+                <br />
+                Owned: <item-display data-format="number" data-key="coins"></item-display>
             `);
             buyAmountInput.on("input change", () => this.applyTotalBuy());
 
             // Remove sell buttons
-            document.querySelectorAll("div[id^=player-market-slot-empty] button").forEach(
-                b => {
-                    const click = b.onclick;
-                    b.parentElement.onclick = b.onclick;
-                    const div = document.createElement("div");
-                    div.setAttribute("id", "panel-sell-text");
-                    div.classList.add("hover");
-                    div.innerText = "Sell an item";
-                    b.replaceWith(div);
-                }
-            );
+            document.querySelectorAll("div[id^=player-market-slot-empty] button").forEach(b => {
+                b.parentElement.onclick = b.onclick;
+                const div = document.createElement("div");
+                div.setAttribute("id", "panel-sell-text");
+                div.classList.add("hover");
+                div.innerText = "Sell an item";
+                b.replaceWith(div);
+            });
 
             // wrap Market.browse_get_table to capture last selected
-            const original_market_browse = Market.browse_get_table;
             Market.browse_get_table = function(item) {
                 return self.browseGetTable(item);
             }
@@ -973,7 +1031,7 @@
                         }
                         case "logs": {
                             let perCoin = (priceAfterTax / (Cooking.getHeatPerLog(datum.market_item_name) * (useHeatPot ? 2 : 1)));
-                            let sDPerCoin = (3500 / priceAfterTax);
+                            let sDPerCoin = (4000 / priceAfterTax);
                             const charcoalMultiplier = 1 * (window.var_titanium_charcoal_foundry_crafted ? 2 : 1) * (window.var_green_charcoal_orb_absorbed ? 2 : 1);
                             let charPerCoin = ((priceAfterTax / CHARCOAL_PERC[datum.market_item_name]) / charcoalMultiplier);
                             let levelReq = (LEVEL_REQ[datum.market_item_name]);
@@ -1084,7 +1142,6 @@
                             else{
                                 datum.perCoinLabel = "";
                             }
-                            //console.log(levelReq);
                             break;
                         }
                         case "weapons": {
@@ -1150,13 +1207,19 @@
         updateTable() {
             let html = `<tr>
                             <th>ITEM</th>
-                            <th></th>
+                            <th style="width: 60px;"></th>
                             <th>AMOUNT</th>
-                            <th class="actions" onclick="IdlePixelPlus.plugins.market.marketHeaderOnClick(event);">PRICE EACH</th>
-                            <th>EXTRA INFO</th>
-                            <th>CATEGORY</th>
-                            <th>EXPIRES IN</th>
-                        </tr>`;
+                            <th class="actions" onclick="IdlePixelPlus.plugins.market.marketHeaderOnClick(event);">PRICE EACH</th>`;
+            if(this.getConfig("extraInfoColumn"))
+                html += `<th>EXTRA INFO</th>`;
+            if(this.getConfig("categoryColumn"))
+                html += `<th>CATEGORY</th>`;
+            html += `<th>EXPIRES IN</th>`;
+            if(this.getConfig("quickBuyColumn"))
+                html += `<th>QUICK BUY 
+                        </th>`;
+                html += `<th style="width: 0px;"><u class="hover" style="font-size: 80%; font-weight: 400;" onclick="alert(&quot;You can configure visible table columns in the plugin options.&quot;)">?</u></th>`;
+            html += `</tr>`;
             // in case you want to add any extra data to the table but still use this script
             if(typeof window.ModifyMarketDataHeader === "function") {
                 html = window.ModifyMarketDataHeader(html);
@@ -1177,23 +1240,35 @@
                     let your_entry = "";
 
                     if(Items.getItem("player_id") == player_id) {
-                        your_entry = "<span class='color-grey font-small'><br /><br />(Your Item)</span>";
+                        your_entry = "<span class='font-small'><br /><br />(Your Item)</span>";
                     }
 
                     let rowHtml = "";
                     rowHtml += `<tr onclick="Modals.market_purchase_item('${market_id}', '${item_name}', '${amount}', '${price_each}'); IdlePixelPlus.plugins.market.applyMaxAmountBuyIfConfigured();" class="hover${ best ? ' cheaper' : '' }">`;
                     rowHtml += `<td>${Items.get_pretty_item_name(item_name)}${your_entry}</td>`;
-                    rowHtml += `<td><img src="https://d1xsc8x7nc5q8t.cloudfront.net/images/${item_name}.png" /></td>`;
+                    rowHtml += `<td style="width: 60px;"><img src="https://d1xsc8x7nc5q8t.cloudfront.net/images/${item_name}.png" /></td>`;
                     rowHtml += `<td>${amount}</td>`;
                     rowHtml += `<td><img src="https://d1xsc8x7nc5q8t.cloudfront.net/images/coins.png" /> ${Market.get_price_after_tax(price_each)}`;
                     if(perCoinLabel) {
                         rowHtml += `<br /><span style="font-size: 80%; opacity: 0.8">${perCoinLabel}</span>`;
                     }
                     rowHtml += `</td>`;
-                    rowHtml += `<td>${levelReq}</td>`;
-                    rowHtml += `<td>${category}</td>`;
+                    if(this.getConfig("extraInfoColumn"))
+                        rowHtml += `<td>${levelReq}</td>`;
+                    if(this.getConfig("categoryColumn"))
+                        rowHtml += `<td>${category}</td>`;
                     rowHtml += `<td>${Market._get_expire_time(timestamp)}</td>`;
-                    rowHtml += `</tr>`;
+                    if(this.getConfig("quickBuyColumn")) {
+                        const qbSetting = this.getConfig("quickBuyAmount");
+                        const qbAmount = Math.min(qbSetting, amount, Math.floor(IdlePixelPlus.getVarOrDefault("coins", 0, "int") / (price_each * 1.01)));
+                        const qbButtonStr = (qbSetting == 0) ? "Max" : `${qbAmount}`;
+                        rowHtml += `<td>
+                                        <button onclick='IdlePixelPlus.plugins.market.quickBuyOnClick(${market_id}, ${qbAmount}); event.stopPropagation();' ${qbAmount == 0 ? "disabled": ""}>
+                                            Buy ${qbButtonStr}
+                                        </button>
+                                    </td>`;
+                    }
+                    rowHtml += `<td style="width:0px;"></td></tr>`;
 
                     // in case you want to add any extra data to the table but still use this script
                     if(typeof window.ModifyMarketDataRow === "function") {
@@ -1203,6 +1278,10 @@
                 }
             });
             document.getElementById("market-table").innerHTML = html;
+        }
+
+        quickBuyOnClick(marketId, amount) {
+            IdlePixelPlus.sendMessage("MARKET_PURCHASE=" + marketId + "~" + amount);
         }
 
         filterButtonOnClick(category) {
@@ -1662,7 +1741,8 @@
 
             setTimeout(() => {
                 const e = document.querySelector("#notification-market-watcher");
-                itemTriggered ? e.classList.remove("hide") : e.classList.add("hide");
+                if(e)
+                    itemTriggered ? e.classList.remove("hide") : e.classList.add("hide");
             }, 2000);
         }
 
