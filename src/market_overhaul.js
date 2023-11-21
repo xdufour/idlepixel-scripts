@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         IdlePixel Market Overhaul - Wynaan Fork
 // @namespace    com.anwinity.idlepixel
-// @version      1.4.1
+// @version      1.4.2
 // @description  Overhaul of market UI and functionality.
 // @author       Original Author: Anwinity || Modded By: GodofNades/Zlef/Wynaan
 // @license      MIT
@@ -213,7 +213,10 @@
             colorItemSlotsBg:   "#00ffdd",
             colorRowOdd:        "#c3ebe9",
             colorRowEven:       "#c3ebe9",
-            colorText:          "#000000"
+            colorText:          "#000000",
+            colorChartLineMax:      "#b41414",
+            colorChartLineAverage:  "#3232d2",
+            colorChartLineMin:      "#509125"
         },
         dark: {
             colorPanelsOutline: "#2a2a2a",
@@ -221,7 +224,10 @@
             colorItemSlotsBg:   "#333333",
             colorRowOdd:        "#333333",
             colorRowEven:       "#444444",
-            colorText:          "#cccccc"
+            colorText:          "#cccccc",
+            colorChartLineMax:      "#b41414",
+            colorChartLineAverage:  "#0984f7",
+            colorChartLineMin:      "#509125"
         }
     };
 
@@ -316,6 +322,12 @@
                         default: 1
                     },
                     {
+                        id: "quickBuyAllNeedsAltKey",
+                        label: "Require Alt-key when right-clicking to quick-buy all",
+                        type: "boolean",
+                        default: true
+                    },
+                    {
                         label: "------------------------------------------------<br/>Theme<br/>------------------------------------------------",
                         type: "label"
                     },
@@ -382,7 +394,7 @@
                     },
                     {
                         id: "colorRowAccentsEnabled",
-                        label: "Change table row accents color",
+                        label: "Change table row accent colors",
                         type: "boolean",
                         default: false
                     },
@@ -397,6 +409,30 @@
                         label: "Row accent color 2",
                         type: "color",
                         default: THEME_DEFAULTS.default.rowAccent2
+                    },
+                    {
+                        id: "colorChartLineEnabled",
+                        label: "Change history chart line colors",
+                        type: "boolean",
+                        default: false
+                    },
+                    {
+                        id: "colorChartLineMax",
+                        label: "History chart max price line color",
+                        type: "color",
+                        default: THEME_DEFAULTS.default.colorChartLineMax
+                    },
+                    {
+                        id: "colorChartLineAverage",
+                        label: "History chart average price line color",
+                        type: "color",
+                        default: THEME_DEFAULTS.default.colorChartLineAverage
+                    },
+                    {
+                        id: "colorChartLineMin",
+                        label: "History chart min price line color",
+                        type: "color",
+                        default: THEME_DEFAULTS.default.colorChartLineMin
                     }
                 ]
             });
@@ -405,6 +441,7 @@
             this.historyChart = undefined;
             this.currentTableData = undefined;
             this.lastSortIndex = 0;
+            this.loginDone = false;
         }
 
         onConfigsChanged() {
@@ -423,6 +460,9 @@
             if(this.getConfig("marketGraph")) {
                 $("#history-chart-div").hide();
             }
+
+            if(this.loginDone)
+                this.refreshMarket(false);
         }
 
         addMarketNotifications() {
@@ -572,6 +612,11 @@
                     border: 2px solid #00000022;
                     box-shadow: none;
                 }
+            }
+            div[id^=player-market-slot-empty] {
+                &:hover {
+                    outline: 1px solid ${colorText + "55"};
+                }
                 > #panel-sell-text {
                     display: flex;
                     justify-content: center;
@@ -580,7 +625,7 @@
                     font-size: 20pt;
                     color: ${colorText + "55"} !important;
                 }
-            } 
+            }
             #market-watcher-div {
                 border-radius: 5pt;
                 border: 2px solid #00000022;
@@ -592,10 +637,26 @@
                 }
             }
             #history-chart-div {
+                position: relative;
                 margin: 0 auto;
                 border-radius: 5pt;
                 border: 2px solid #00000022;
                 background: ${colorPanelsBg};
+                > #history-chart-timespan {
+                    position: absolute;
+                    top: 6px;
+                    right: 6px;
+                    font-size: 10pt;
+                    border-radius: 3pt;
+                    background-color: ${colorPanelsBg};
+                    color: ${colorText};
+                    &:hover {
+                        cursor: pointer;
+                    }
+                    &:focus-visible {
+                        outline: none;
+                    }
+                }
             }`;
             if(this.historyChart) {
                 this.historyChart.options.scales.x.ticks.color = colorText;
@@ -786,17 +847,17 @@
             const sellModal = $("#modal-market-configure-item-to-sell");
             const sellAmountInput = sellModal.find("#modal-market-configure-item-to-sell-amount");
             sellAmountInput.after(`
-              <button type="button" onclick="IdlePixelPlus.plugins.market.applyOneAmountSell()">1</button>
-              <button type="button" onclick="IdlePixelPlus.plugins.market.applyMaxAmountSell()">max</button>
-              <button type="button" onclick="IdlePixelPlus.plugins.market.applyMaxAmountSell(true)">max-1</button>
+                <button type="button" onclick="IdlePixelPlus.plugins.market.applyOneAmountSell()">1</button>
+                <button type="button" onclick="IdlePixelPlus.plugins.market.applyMaxAmountSell()">max</button>
+                <button type="button" onclick="IdlePixelPlus.plugins.market.applyMaxAmountSell(true)">max-1</button>
             `);
             const sellPriceInput = sellModal.find("#modal-market-configure-item-to-sell-price-each").after(`
-              <button type="button" onclick="IdlePixelPlus.plugins.market.applyMinPriceSell()">min</button>
-              <button type="button" onclick="IdlePixelPlus.plugins.market.applyLowestPriceSell()">lowest</button>
-              <button type="button" onclick="IdlePixelPlus.plugins.market.applyMidPriceSell()">mid</button>
-              <button type="button" onclick="IdlePixelPlus.plugins.market.applyMaxPriceSell()">max</button>
-              <br /><br />
-              Total: <span id="modal-market-configure-item-to-sell-total"></span>
+                <button type="button" onclick="IdlePixelPlus.plugins.market.applyMinPriceSell()">min</button>
+                <button type="button" onclick="IdlePixelPlus.plugins.market.applyLowestPriceSell()">lowest</button>
+                <button type="button" onclick="IdlePixelPlus.plugins.market.applyMidPriceSell()">mid</button>
+                <button type="button" onclick="IdlePixelPlus.plugins.market.applyMaxPriceSell()">max</button>
+                <br /><br />
+                Total: <span id="modal-market-configure-item-to-sell-total"></span>
             `);
 
             document.querySelectorAll(`button[id^=player-market-slot-collect-amount]`).forEach(b => {
@@ -809,9 +870,15 @@
                 b.addEventListener("click", () => {
                     b.textContent = b.textContent.replace(/[0-9,]+/, '0');
                     $("#market-sidecar").hide();
+                    this.refreshMarket(false);
                 });
             });
             document.querySelectorAll(`span[id^=player-market-slot-expires]`).forEach(s => s.previousElementSibling.remove());
+
+            // Refresh market on purchase
+            const purchaseButton = document.querySelector(`input[onclick*="Market.purchase_item()"]`);
+            if(purchaseButton)
+                purchaseButton.addEventListener("click", () => this.refreshMarket(false));
 
             sellAmountInput.on("input change", () => this.applyTotalSell());
             sellPriceInput.on("input change", () => this.applyTotalSell());
@@ -841,9 +908,7 @@
 
             const buyModal = $("#modal-market-purchase-item");
             const buyAmountInput = buyModal.find("#modal-market-purchase-item-amount-input");
-            // Added by Zlef ->
             $(document).on('click', '[onclick*="Modals.market_purchase_item"]', this.handlePurchaseClick.bind(this));
-            // <-
             buyAmountInput.after(`
                 <button type="button" onclick="IdlePixelPlus.plugins.market.applyOneAmountBuy()">1</button>
                 <button type="button" onclick="IdlePixelPlus.plugins.market.applyMaxAmountBuy()">max</button>
@@ -866,7 +931,7 @@
 
             // wrap Market.browse_get_table to capture last selected
             Market.browse_get_table = function(item) {
-                return self.browseGetTable(item);
+                return self.browseGetTable(item, true);
             }
 
             // wrap Market.load_tradables to populate category filters
@@ -925,13 +990,23 @@
             const sellSlotWidth = $(".player-market-slot-base").outerWidth();
             document.getElementById("market-table").style.minWidth = sellSlotWidth * 3;
             // History chart
-            $(`#panel-player-market button[onclick^="Market.clicks_browse_player_market_button"]`).parent()
-                .before(`<center id="history-chart-div" style="display:block; margin-bottom: 0.5em; width: ${sellSlotWidth * 3}px; height: 200px;">
-                            <canvas id="history-chart" style="display: block;">
-                        </center>`);
-            Chart.defaults.datasets.line.tension = 0.3;
-            Chart.defaults.datasets.line.fill = false;
-            Chart.defaults.datasets.line.borderWidth = 2;
+            $(`#panel-player-market button[onclick^="Market.clicks_browse_player_market_button"]`).parent().before(`
+                <div id="history-chart-div" style="display:block; margin-bottom: 0.5em; width: ${sellSlotWidth * 3}px; height: 200px;">
+                    <select id="history-chart-timespan" align="right" onchange='IdlePixelPlus.plugins.market.fetchMarketHistory();'>
+                        <option value="1d">24 Hours</option>
+                        <option value="7d" selected="selected">7 Days</option>
+                        <option value="30d">30 Days</option>
+                        <option value="60d">60 Days</option>
+                        <option value="120d">120 Days</option>
+                    </select>
+                    <canvas id="history-chart" style="display: block;" align="middle">
+                </div>`);
+            Object.assign(Chart.defaults.datasets.line, {
+                fill: false,
+                tension: 0.3,
+                borderWidth: 2,
+                pointRadius: 1
+            });
 
             // Player ID display
             this.onConfigsChanged();
@@ -955,9 +1030,10 @@
             this.loadStyles();
             this.applyLocalStorage();
             this.checkWatchers();
+            this.loginDone = true;
         }
 
-        browseGetTable(item) {
+        browseGetTable(item, updateGraph) {
             const self = this;
             if(item != this.lastBrowsedItem) {
                 self.lastSortIndex = 0;
@@ -973,7 +1049,7 @@
                 $("#modal-market-configure-item-watcher-label").text(item.split("_").map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(" "));
 
                 try {
-                    if(this.getConfig("marketGraph")) {
+                    if(this.getConfig("marketGraph") && updateGraph) {
                         self.fetchMarketHistory(item);
                     }
                 } catch(err) {
@@ -1011,22 +1087,10 @@
                         case "ores": {
                             let perCoin = (priceAfterTax / (xpMultiplier*XP_PER[datum.market_item_name]));
                             datum.perCoin = perCoin;
-                            datum.perCoinLabel = `${perCoin.toFixed(perCoin < 10 ? 2 : 1)} coins/xp`;
+                            datum.perCoinLabel = isNaN(perCoin) ? "" : `${perCoin.toFixed(perCoin < 10 ? 2 : 1)} coins/xp`;
                             datum.levelReq = "N/A";
                             datum.ratios = [perCoin];
-                            if(!best[datum.market_item_category]) {
-                                best[datum.market_item_category] = perCoin;
-                                bestList[datum.market_item_category] = [datum];
-                            }
-                            else {
-                                if(perCoin == best[datum.market_item_category]) {
-                                    bestList[datum.market_item_category].push(datum);
-                                }
-                                else if(perCoin < best[datum.market_item_category]) {
-                                    bestList[datum.market_item_category] = [datum];
-                                    best[datum.market_item_category] = perCoin;
-                                }
-                            }
+                            self.setBest(best, bestList, datum, perCoin);
                             break;
                         }
                         case "logs": {
@@ -1046,19 +1110,7 @@
                             else {
                                 datum.perCoinLabel = `${perCoin.toFixed(perCoin < 10 ? 2 : 1)} coins/heat<br/>${charPerCoin.toFixed(charPerCoin < 10 ? 2: 1)} coin/charcoal convert rate`;
                             }
-                            if(!best[datum.market_item_category]) {
-                                best[datum.market_item_category] = perCoin;
-                                bestList[datum.market_item_category] = [datum];
-                            }
-                            else {
-                                if(perCoin == best[datum.market_item_category]) {
-                                    bestList[datum.market_item_category].push(datum);
-                                }
-                                else if(perCoin < best[datum.market_item_category]) {
-                                    bestList[datum.market_item_category] = [datum];
-                                    best[datum.market_item_category] = perCoin;
-                                }
-                            }
+                            self.setBest(best, bestList, datum, perCoin);
                             break;
                         }
                         case "raw_fish":{
@@ -1073,19 +1125,7 @@
                             datum.perCoinLabel = `${perCoin.toFixed(perCoin < 10 ? 2 : 1)} coins/energy || ${perHeat.toFixed(perHeat < 10 ? 2 : 1)} energy/heat<br />${comboCoinEnergyHeat.toFixed(comboCoinEnergyHeat < 10 ? 4 : 1)} coins/heat/energy`;
                             datum.levelReq = levelReq;
                             datum.ratios = [perCoin, perHeat, comboCoinEnergyHeat];
-                            if(!best[datum.market_item_category]) {
-                                best[datum.market_item_category] = perCoin;
-                                bestList[datum.market_item_category] = [datum];
-                            }
-                            else {
-                                if(perCoin == best[datum.market_item_category]) {
-                                    bestList[datum.market_item_category].push(datum);
-                                }
-                                else if(perCoin < best[datum.market_item_category]) {
-                                    bestList[datum.market_item_category] = [datum];
-                                    best[datum.market_item_category] = perCoin;
-                                }
-                            }
+                            self.setBest(best, bestList, datum, perCoin);
                             break;
                         }
                         case "cooked_fish":{
@@ -1094,19 +1134,7 @@
                             datum.perCoinLabel = `${perCoin.toFixed(perCoin < 10 ? 2 : 1)} coins/energy`;
                             datum.levelReq = "N/A";
                             datum.ratios = [perCoin];
-                            if(!best[datum.market_item_category]) {
-                                best[datum.market_item_category] = perCoin;
-                                bestList[datum.market_item_category] = [datum];
-                            }
-                            else {
-                                if(perCoin == best[datum.market_item_category]) {
-                                    bestList[datum.market_item_category].push(datum);
-                                }
-                                else if(perCoin < best[datum.market_item_category]) {
-                                    bestList[datum.market_item_category] = [datum];
-                                    best[datum.market_item_category] = perCoin;
-                                }
-                            }
+                            self.setBest(best, bestList, datum, perCoin);
                             break;
                         }
                         case "bones": {
@@ -1115,19 +1143,7 @@
                             datum.perCoinLabel = `${perCoin.toFixed(perCoin < 10 ? 2 : 1)} coins/bonemeal`;
                             datum.levelReq = "N/A";
                             datum.ratios = [perCoin];
-                            if(!best[datum.market_item_category]) {
-                                best[datum.market_item_category] = perCoin;
-                                bestList[datum.market_item_category] = [datum];
-                            }
-                            else {
-                                if(perCoin == best[datum.market_item_category]) {
-                                    bestList[datum.market_item_category].push(datum);
-                                }
-                                else if(perCoin < best[datum.market_item_category]) {
-                                    bestList[datum.market_item_category] = [datum];
-                                    best[datum.market_item_category] = perCoin;
-                                }
-                            }
+                            self.setBest(best, bestList, datum, perCoin);
                             break;
                         }
                         case "seeds": {
@@ -1136,48 +1152,15 @@
                             let sDPerCoin = (14000 / priceAfterTax);
                             datum.levelReq = levelReq;
                             datum.sDPerCoin = sDPerCoin;
-                            if (datum.market_item_name == "stardust_seeds") {
-                                datum.perCoinLabel = `${sDPerCoin.toFixed(sDPerCoin < 10 ? 2 : 1)} ~SD/Coin`;
-                            }
-                            else{
-                                datum.perCoinLabel = "";
-                            }
+                            datum.perCoinLabel = (datum.market_item_name == "stardust_seeds") ? `${sDPerCoin.toFixed(sDPerCoin < 10 ? 2 : 1)} ~SD/Coin` : "";
                             break;
                         }
+                        case "armour":
+                        case "other_equipment":
                         case "weapons": {
                             datum.perCoin = Number.MAX_SAFE_INTEGER;
                             datum.perCoinLabel = "";
-                            let levelReq = "N/A";
-                            if (LEVEL_REQ[datum.market_item_name]) {
-                                levelReq = (LEVEL_REQ[datum.market_item_name]);
-                                datum.levelReq = levelReq;
-                            }
-                            else {
-                                datum.levelReq = "N/A";
-                            }
-                            //console.log(levelReq);
-                            break;
-                        }
-                        case "other_equipment": {
-                            datum.perCoin = Number.MAX_SAFE_INTEGER;
-                            datum.perCoinLabel = "";
-                            let levelReq = (LEVEL_REQ[datum.market_item_name]);
-                            datum.levelReq = levelReq;
-                            //console.log(levelReq);
-                            break;
-                        }
-                        case "armour": {
-                            datum.perCoin = Number.MAX_SAFE_INTEGER;
-                            datum.perCoinLabel = "";
-                            let levelReq = "N/A";
-                            if (LEVEL_REQ[datum.market_item_name]) {
-                                levelReq = (LEVEL_REQ[datum.market_item_name]);
-                                datum.levelReq = levelReq;
-                            }
-                            else {
-                                datum.levelReq = "N/A";
-                            }
-                            //console.log(levelReq);
+                            datum.levelReq = LEVEL_REQ[datum.market_item_name] ? LEVEL_REQ[datum.market_item_name] : "N/A";
                             break;
                         }
                         default: {
@@ -1202,6 +1185,22 @@
                 show_element("market-table");
             });
 
+        }
+
+        setBest(best, bestList, datum, ratio) {
+            if(!best[datum.market_item_category]) {
+                best[datum.market_item_category] = ratio;
+                bestList[datum.market_item_category] = [datum];
+            }
+            else {
+                if(ratio == best[datum.market_item_category]) {
+                    bestList[datum.market_item_category].push(datum);
+                }
+                else if(ratio < best[datum.market_item_category]) {
+                    bestList[datum.market_item_category] = [datum];
+                    best[datum.market_item_category] = ratio;
+                }
+            }
         }
 
         updateTable() {
@@ -1261,9 +1260,11 @@
                     if(this.getConfig("quickBuyColumn")) {
                         const qbSetting = this.getConfig("quickBuyAmount");
                         const qbAmount = Math.min(qbSetting, amount, Math.floor(IdlePixelPlus.getVarOrDefault("coins", 0, "int") / (price_each * 1.01)));
+                        const qbMaxAmount = Math.min(amount, Math.floor(IdlePixelPlus.getVarOrDefault("coins", 0, "int") / (price_each * 1.01)))
                         const qbButtonStr = (qbSetting == 0) ? "Max" : `${qbAmount}`;
                         rowHtml += `<td>
-                                        <button onclick='IdlePixelPlus.plugins.market.quickBuyOnClick(${market_id}, ${qbAmount}); event.stopPropagation();' ${qbAmount == 0 ? "disabled": ""}>
+                                        <button onclick='IdlePixelPlus.plugins.market.quickBuyOnClick(${market_id}, ${qbAmount}); event.stopPropagation();' 
+                                                oncontextmenu='IdlePixelPlus.plugins.market.quickBuyOnRightClick(${market_id}, ${qbMaxAmount}, event);' ${qbAmount == 0 ? "disabled": ""}>
                                             Buy ${qbButtonStr}
                                         </button>
                                     </td>`;
@@ -1282,6 +1283,17 @@
 
         quickBuyOnClick(marketId, amount) {
             IdlePixelPlus.sendMessage("MARKET_PURCHASE=" + marketId + "~" + amount);
+            this.refreshMarket(false);
+        }
+
+        quickBuyOnRightClick(marketId, amount, event) {
+            const qbAllNeedsAltKey = this.getConfig("quickBuyAllNeedsAltKey");
+            event.preventDefault(); 
+            event.stopPropagation();
+            if(!qbAllNeedsAltKey || event.altKey) {
+                IdlePixelPlus.sendMessage("MARKET_PURCHASE=" + marketId + "~" + amount);
+                this.refreshMarket(false);
+            }
         }
 
         filterButtonOnClick(category) {
@@ -1290,7 +1302,7 @@
             if(category != "all") { // Patch to prevent clicking the "All" button event coming through to the category listener without double-toggling
                 Modals.toggle("modal-market-select-item");
             }
-            this.browseGetTable("all");
+            this.browseGetTable("all", true);
         }
 
         filterTable(category) {
@@ -1330,7 +1342,7 @@
 
         refreshMarket(disableButtonForABit) {
             if(this.lastBrowsedItem) {
-                Market.browse_get_table(this.lastBrowsedItem);
+                this.browseGetTable(this.lastBrowsedItem, false);
                 if(disableButtonForABit) { // prevent spam clicking it
                     $("#refresh-market-table-button").prop("disabled", true);
                     setTimeout(() => {
@@ -1555,18 +1567,23 @@
         seeMarketOnClick(sellSlotIndex) {
             try {
                 const item = $(`#player-market-slot-item-image-${sellSlotIndex}`).attr("src").match(/\/([a-zA-Z0-9_]+)\.png$/)[1];
-                this.browseGetTable(item);
+                this.browseGetTable(item, true);
             } catch(err) {
                 console.error(err);
             }
         }
 
         async fetchMarketHistory(item) {
+            const timespanSelect = document.getElementById("history-chart-timespan");
+            const timespan = timespanSelect.options[timespanSelect.selectedIndex].value;
+            if(item === undefined)
+                item = this.lastBrowsedItem;
+
             $("#history-chart-div").show();
 
-            const response = await fetch(`https://data.idle-pixel.com/market/api/getMarketHistory.php?item=${item}&range=7d`);
+            const response = await fetch(`https://data.idle-pixel.com/market/api/getMarketHistory.php?item=${item}&range=${timespan}`);
             const data = await response.json();
-            const dataByDay = this.splitHistoryDataByDays(data);
+            const splitData = this.splitHistoryData(data, timespan == "1d" ? "hours" : "days");
 
             // Create chart object if uninitialized
             if(this.historyChart === undefined){
@@ -1594,53 +1611,61 @@
                     }
                 });
             }
-            this.updateHistoryChart(dataByDay);
+            this.updateHistoryChart(splitData);
         }
 
-        updateHistoryChart(dataByDay) {
-            const averagePrices = dataByDay.map(datum => Math.round(datum.data.map(d => d.price * d.amount)
+        updateHistoryChart(data) {
+            const averagePrices = data.map(datum => Math.round(datum.data.map(d => d.price * d.amount)
                                                                               .reduce((a, b) => a + b, 0) / datum.data.map(d => d.amount)
                                                                                                                       .reduce((a, b) => a + b, 0)));
-            
             this.historyChart.options.plugins.tooltip.callbacks.footer = (tooltipItems) => {
-                const amountsSum = dataByDay[tooltipItems[0].dataIndex].data.map(datum => datum.amount).reduce((a, b) => a + b, 0);
+                const amountsSum = data[tooltipItems[0].dataIndex].data.map(datum => datum.amount).reduce((a, b) => a + b, 0);
                 return `Transaction Volume: ${amountsSum}`;
             }
             this.historyChart.data = {
-                labels: dataByDay.map(datum => datum.date.toString().match(/^[a-zA-Z]+\s([a-zA-Z]+\s[0-9]{1,2})\s/)[1]),
+                labels: data.map(datum => datum.date),
                 datasets: [{
                     label: 'Lowest Price',
-                    data: dataByDay.map(datum => Math.min(...datum.data.map(d => d.price))),
-                    borderColor: 'rgb(80, 145, 37)',
+                    data: data.map(datum => Math.min(...datum.data.map(d => d.price))),
+                    borderColor: this.getStyleFromConfig("colorChartLineEnabled", "colorChartLineMin")
                 },
                 {
                     label: 'Average Price',
                     data: averagePrices,
-                    borderColor: 'rgb(50, 50, 210)',
+                    borderColor: this.getStyleFromConfig("colorChartLineEnabled", "colorChartLineAverage")
                 },
                 {
                     label: 'Highest Price',
-                    data: dataByDay.map(datum => Math.max(...datum.data.map(d => d.price))),
-                    borderColor: 'rgb(180, 20, 20)',
+                    data: data.map(datum => Math.max(...datum.data.map(d => d.price))),
+                    borderColor: this.getStyleFromConfig("colorChartLineEnabled", "colorChartLineMax")
                 }]
             };
             this.historyChart.update();
         }
 
-        splitHistoryDataByDays(data) {
-            var daysData = [];
+        splitHistoryData(data, bucketSize) {
+            var splitData = [];
             data.history.forEach(datum => {
-                let match = daysData.filter(dd => dd.date.getDate() === (new Date(datum.datetime)).getDate());
+                let match;
+                const date = new Date(datum.datetime);
+                if(bucketSize == "days")
+                    match = splitData.filter(dd => dd.date.getDate() == date.getDate() && dd.date.getMonth() == date.getMonth());
+                else if(bucketSize == "hours")
+                    match = splitData.filter(dd => dd.date.getHours() == date.getHours());
                 if(match.length == 0) {
-                    daysData.push({
-                        date: new Date(datum.datetime),
+                    splitData.push({
+                        date: date,
                         data: [{price: datum.price, amount: datum.amount}]
                     });
                 } else {
                     match[0].data.push({price: datum.price, amount: datum.amount});
                 }
             });
-            return daysData;
+            if(bucketSize == "days")
+                splitData.forEach(datum => datum.date = datum.date.toString().match(/^[a-zA-Z]+\s([a-zA-Z]+\s[0-9]{1,2})\s/)[1]);
+            else if(bucketSize == "hours")
+                splitData.forEach(datum => datum.date = `${datum.date.getHours()}h`);
+            return splitData;
         }
 
         createMarketWatcher() {
@@ -1666,7 +1691,7 @@
         createWatcherElement(item, value, lt_gt) {
             $("#market-watcher-div").children().last().after(`
             <div id="watched-item-${item}" class="market-tradable-item p-1 m-1 hover shadow" style="background-color:#ffcccc">
-                <div align="left" onclick='IdlePixelPlus.plugins.market.browseGetTable(\"${item}\"); event.stopPropagation();'>
+                <div align="left" onclick='IdlePixelPlus.plugins.market.browseGetTable(\"${item}\", true); event.stopPropagation();'>
                     <img class="hover" src="https://d1xsc8x7nc5q8t.cloudfront.net/images/search_white.png" width="15px" height="15px" title="search_white">
                 </div>
                 <div onclick='IdlePixelPlus.plugins.market.watchedItemOnClick(\"${item}\");' style="margin-top: -15px;">
@@ -1690,16 +1715,21 @@
         }
 
         configureItemWatcherModal(item, create) {
+            const tradable = Market.tradables.find(t => t.item == item);
             $("#modal-market-configure-item-watcher-image").attr("src", `https://idlepixel.s3.us-east-2.amazonaws.com/images/${item}.png`);
-            $("#modal-market-configure-item-watcher-label").text(item.split("_").map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(" "));
+            document.getElementById("modal-market-configure-item-watcher-label").textContent = Items.get_pretty_item_name(item);
+            document.getElementById("modal-market-configure-item-watcher-low-limit").textContent = tradable.lower_limit;
+            document.getElementById("modal-market-configure-item-watcher-high-limit").textContent = tradable.upper_limit;
             if(create){
                 $("#modal-market-configure-item-watcher-price-each").val("");
+                $("#modal-market-configure-item-watcher-mode").val("1");
                 $("#modal-market-configure-item-watcher-ok-button").prop("value", `Create Watcher`);
                 $("#modal-market-configure-item-watcher-cancel-button").prop("value", "Cancel");
                 $("#modal-market-configure-item-watcher-cancel-button").attr("onclick", "");
             }
             else {
                 $("#modal-market-configure-item-watcher-price-each").val($(`#watched-item-${item}-label`).text().match(/[0-9]+/)[0]);
+                $("#modal-market-configure-item-watcher-mode").val($(`#watched-item-${item}-label`).text().match(/[><]/)[0] == "<" ? "1" : "2");
                 $("#modal-market-configure-item-watcher-ok-button").prop("value", `Edit Watcher`);
                 $("#modal-market-configure-item-watcher-cancel-button").prop("value", "Delete Watcher");
                 $("#modal-market-configure-item-watcher-cancel-button").attr("onclick", `IdlePixelPlus.plugins.market.deleteMarketWatcher(\"${item}\")`);

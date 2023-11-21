@@ -119,7 +119,7 @@
                             color: rgba(var(--chat-level-color), 1.0);
                         }
                         &.dimmed {
-                            color: rgba(var(--chat-text-color), 0.3) !important;
+                            color: rgba(var(--chat-text-color), 0.2) !important;
                             > span, a {
                                 color: rgba(var(--chat-text-color), 0.3) !important;
                                 border-color: rgba(var(--chat-text-color), 0.3);
@@ -139,6 +139,17 @@
                             height: 1.5em;
                             padding: 0px 4px 0px 4px;
                         }
+                    }
+                    &::-webkit-scrollbar {
+                        background: transparent;
+                        width: 0.25em;
+                    }   
+                    &::-webkit-scrollbar-track {
+                        background: transparent;
+                    }
+                    &::-webkit-scrollbar-thumb {
+                        background: rgba(var(--chat-text-color), 0.2);
+                        border-radius: 5pt;
                     }
                 }
                 div:has(> .chat-area-input) {
@@ -233,11 +244,11 @@
             // Take all modals out of the game-chat div to prevent sticky chat area from breaking them
             gameChat.querySelectorAll(".modal").forEach(modal => {
                 const e = gameChat.removeChild(modal);
-                $("#game-chat").after(e.outerHTML);
+                gameChat.after(e);
             });
 
             // Move top bar outside content so it goes over the chat
-            $("#content").before(gameScreen.removeChild(document.getElementById("top-bar")).outerHTML);
+            document.getElementById("content").before(gameScreen.removeChild(document.getElementById("top-bar")));
 
             if(IdlePixelPlus.plugins["ui-tweaks"]) {
                 this.applyUITweaksThemes();
@@ -248,17 +259,19 @@
         configureChat(setting) {
             const gameScreen = document.getElementById("game-screen");
             const gameChat = document.getElementById("game-chat");
+            const resizerDiv = document.getElementById("chat-resizer");
 
             // Add resize drag bar to the left of the chat
             if(setting === "side") {
                 gameChat.classList.remove("m-3");
-                $("#game-chat").before(`<div id="chat-resizer" class="resizer"></div>`);
-                document.getElementById("chat-resizer").addEventListener("mousedown", initDrag, false);
+                if(!resizerDiv) {
+                    $("#game-chat").before(`<div id="chat-resizer" class="resizer"></div>`);
+                    document.getElementById("chat-resizer").addEventListener("mousedown", initDrag, false);
+                }
 
                 gameScreen.style.width = "70vw";
             }
             else {
-                const resizerDiv = document.getElementById("chat-resizer");
                 if(resizerDiv)
                     resizerDiv.remove();
                 if(!gameChat.classList.contains("m-3"))
