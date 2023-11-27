@@ -20,6 +20,7 @@
     const LOCAL_STORAGE_KEY = "plugin_market_watchers";
 
     const MARKET_HISTORY_URL = "https://data.idle-pixel.com/market/api/getMarketHistory.php";
+    const MARKET_TRADABLES_URL = "https://data.idle-pixel.com/market/api/getTradables.php";
     const MARKET_POSTINGS_URL = "https://idle-pixel.com/market/browse";
 
     const IMAGE_HOST_URL = "https://d1xsc8x7nc5q8t.cloudfront.net/images";
@@ -964,7 +965,10 @@
                                 const qty = node.nextSibling.textContent.match(/[0-9]+/)[0];
                                 const response = await fetch(`${MARKET_POSTINGS_URL}/${item}/`);
                                 const data = await response.json();
-                                const currentMarketMinPrice = Math.min(...data.map(datum => datum.market_item_price_each));
+                                let currentMarketMinPrice = Math.min(...data.map(datum => datum.market_item_price_each));
+                                if(!isFinite(currentMarketMinPrice)) {
+                                    currentMarketMinPrice = ((item) => this.marketAverages[item])();
+                                }
                                 const displayedValue = (qty * currentMarketMinPrice > 1000) ? `${(qty * currentMarketMinPrice / 1000).toFixed(2)}k` : qty * currentMarketMinPrice;
                                 totalCost += qty * currentMarketMinPrice;
                                 node.nextSibling.textContent += ` (`;
@@ -1067,6 +1071,7 @@
             this.applyLocalStorage();
             this.checkWatchers();
             this.getGlobalMarketHistoryAverages(7);
+            this.preloadMarketTradables();
             this.loginDone = true;
         }
 
@@ -1929,6 +1934,12 @@
             menu.style.top = event.pageY + "px";
 
             event.stopPropagation();
+        }
+
+        async preloadMarketTradables() {
+            const response = await fetch(MARKET_TRADABLES_URL);
+            const data = await response.json();
+            Market.tradables = data.tradables;
         }
 
         getItemIconUrl(item) {
