@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         IdlePixel Market Overhaul - Wynaan Fork
 // @namespace    com.anwinity.idlepixel
-// @version      1.4.2
+// @version      1.4.3
 // @description  Overhaul of market UI and functionality.
 // @author       Original Author: Anwinity || Modded By: GodofNades/Zlef/Wynaan
 // @license      MIT
@@ -18,6 +18,12 @@
     var marketRunning = false;
 
     const LOCAL_STORAGE_KEY = "plugin_market_watchers";
+
+    const MARKET_HISTORY_URL = "https://data.idle-pixel.com/market/api/getMarketHistory.php";
+    const MARKET_POSTINGS_URL = "https://idle-pixel.com/market/browse";
+
+    const IMAGE_HOST_URL = "https://d1xsc8x7nc5q8t.cloudfront.net/images";
+    const COIN_ICON_URL = `${IMAGE_HOST_URL}/coins.png`;
 
     const XP_PER = {
         stone: 0.1,
@@ -439,6 +445,7 @@
             this.lastBrowsedItem = "all";
             this.lastCategoryFilter = "all";
             this.historyChart = undefined;
+            this.marketAverages = {};
             this.currentTableData = undefined;
             this.lastSortIndex = 0;
             this.loginDone = false;
@@ -669,7 +676,7 @@
             configurableStyles.innerHTML = styles;
         }
 
-        onLogin() {
+        async onLogin() {
             this.addMarketNotifications();
             if(this.getConfig("marketSoldNotification")) {
                 this.updateMarketNotifications();
@@ -810,7 +817,7 @@
                                     <span class="color-gold" id="modal-market-configure-item-watcher-high-limit">N/A</span>
                                     <span class="color-gold"> each</span>
                                     <br>
-                                    <img src="https://d1xsc8x7nc5q8t.cloudfront.net/images/coins.png" title="coins">
+                                    <img src="${COIN_ICON_URL}" title="coins">
                                     <input type="text" id="modal-market-configure-item-watcher-price-each" width="30%" placeholder="Price Each" original-width="30%">
                                     <select id="modal-market-configure-item-watcher-mode">
                                     <option value="1">Less than</option>
@@ -843,6 +850,41 @@
                 </ul> 
             </div>`);
 
+            const sellSlotWidth = $(".player-market-slot-base").outerWidth();
+            document.getElementById("market-table").style.minWidth = sellSlotWidth * 3;
+            // History chart
+            $(`#panel-player-market button[onclick^="Market.clicks_browse_player_market_button"]`).parent().before(`
+                <div id="history-chart-div" style="display:block; margin-bottom: 0.5em; width: ${sellSlotWidth * 3}px; height: 200px;">
+                    <select id="history-chart-timespan" align="right" onchange='IdlePixelPlus.plugins.market.fetchMarketHistory();'>
+                        <option value="1d">24 Hours</option>
+                        <option value="7d" selected="selected">7 Days</option>
+                        <option value="30d">30 Days</option>
+                        <option value="60d">60 Days</option>
+                        <option value="120d">120 Days</option>
+                    </select>
+                    <canvas id="history-chart" style="display: block;" align="middle">
+                </div>`);
+            Object.assign(Chart.defaults.datasets.line, {
+                fill: false,
+                tension: 0.3,
+                borderWidth: 2,
+                pointRadius: 1
+            });
+
+            // Market watcher
+            $("#notifications-area").children().last().after(`
+                <div id="notification-market-watcher" class="notification hover hide" onclick='highlight_panel_left(document.getElementById(\"left-panel-item_panel-market\")); switch_panels(\"panel-player-market\");' style="margin-right: 4px; margin-bottom: 4px; background-color: rgb(183, 68, 14);">
+                    <img src="https://idlepixel.s3.us-east-2.amazonaws.com/images/player_market.png" class="w20" title="market_alert">
+                    <span id="notification-market-item-label" class="color-white"> Market Alert</span>
+                </div>`);
+            $("#history-chart-div").prev().before(`
+                <center>
+                <div id="market-watcher-div" class="select-item-tradables-catagory shadow" align="left" style="width: ${sellSlotWidth * 3}px; display: none;">
+                    <span class="bold">Active watchers</span>
+                    <hr style="margin-top: 2px; margin-bottom: 4px;">
+                </div>
+                </center>`);
+
             // modal-market-configure-item-to-sell-amount
             const sellModal = $("#modal-market-configure-item-to-sell");
             const sellAmountInput = sellModal.find("#modal-market-configure-item-to-sell-amount");
@@ -859,6 +901,16 @@
                 <br /><br />
                 Total: <span id="modal-market-configure-item-to-sell-total"></span>
             `);
+
+            // Extra buttons beside <BROWSE PLAYER MARKET>
+            $(`#panel-player-market button[onclick^="Market.clicks_browse_player_market_button"]`)
+                .first()
+                .after(`<button id="refresh-market-table-button" type="button" style="height: 44px; margin-left: 0.5em" onclick="IdlePixelPlus.plugins.market.refreshMarket(true);">
+                            Refresh
+                        </button>`)
+                .after(`<button id="watch-market-item-button" type="button" style="height: 44px; margin-left: 0.5em" onclick="IdlePixelPlus.plugins.market.watchItemOnClick()">
+                            Watch Item
+                        </button>`);
 
             document.querySelectorAll(`button[id^=player-market-slot-collect-amount]`).forEach(b => {
                 // Add See Market button
@@ -898,6 +950,41 @@
             });
             //End Zlef
 
+            // Observer for brewing modal change 
+            const brewingModal = document.getElementById("modal-brew-ingredients");
+            const brewingModalObserverOptions = { childList: true, subtree: true};
+            const brewingModalObserver = new window.MutationObserver((mutationRecords) => {
+                brewingModalObserver.disconnect();
+                const record = mutationRecords[0];
+                let totalCost = 0;
+                const promises = Array.from(record.addedNodes).map((async (node) => {
+                        if(node.nodeName === "IMG" && node.nextSibling.nodeName === "#text") {
+                            const item = node.src.match(/\/([a-zA-Z0-9_]+)\.png$/)[1];
+                            if(Market.tradables.find(t => t.item === item)) {
+                                const qty = node.nextSibling.textContent.match(/[0-9]+/)[0];
+                                const response = await fetch(`${MARKET_POSTINGS_URL}/${item}/`);
+                                const data = await response.json();
+                                const currentMarketMinPrice = Math.min(...data.map(datum => datum.market_item_price_each));
+                                const displayedValue = (qty * currentMarketMinPrice > 1000) ? `${(qty * currentMarketMinPrice / 1000).toFixed(2)}k` : qty * currentMarketMinPrice;
+                                totalCost += qty * currentMarketMinPrice;
+                                node.nextSibling.textContent += ` (`;
+                                node.nextElementSibling.insertAdjacentHTML("beforebegin", `<img src="${COIN_ICON_URL}" title="coins"> ${displayedValue})`);
+                            }
+                        }
+                    })
+                );
+                Promise.all(promises).then(() => {
+                    const totalCostElement = document.getElementById("brewing-total-cost");
+                    const totalCostStr = `Estimated total cost: ${totalCost > 1000 ? (totalCost / 1000).toFixed(2) + "k" : totalCost}`;
+                    if(totalCostElement)
+                        totalCostElement.textContent = totalCostStr;
+                    else
+                        record.target.parentNode.insertAdjacentHTML("afterend", `<span id="brewing-total-cost" class="colorg-grey">${totalCostStr}</span>`);
+                    brewingModalObserver.observe(brewingModal, brewingModalObserverOptions);
+                });
+            });
+            brewingModalObserver.observe(brewingModal, brewingModalObserverOptions);
+
             if(this.getConfig("condensed")) {
                 // Remove <br> from between <Amount left> and <Price each>, and reinsert it above title
                 document.querySelectorAll(`span[id^="player-market-slot-item-amount-left"]`).forEach(e => {
@@ -934,29 +1021,6 @@
                 return self.browseGetTable(item, true);
             }
 
-            // wrap Market.load_tradables to populate category filters
-            const original_load_tradables = Market.load_tradables;
-            Market.load_tradables = function(data) {
-                original_load_tradables.apply(this, arguments);
-            }
-            // Temporarily overwrite market_select_tradable_item to bypass the browse button
-            // websocket message opening the tradable modal after calling load_tradables()
-            const original_market_select_tradable_item = Modals.market_select_tradable_item;
-            Modals.market_select_tradable_item = function(data) {
-                Modals.market_select_tradable_item = original_market_select_tradable_item;
-            }
-            websocket.send("MARKET_BROWSE_BUTTON_CLICKED");
-
-            // Extra buttons beside <BROWSE PLAYER MARKET>
-            $(`#panel-player-market button[onclick^="Market.clicks_browse_player_market_button"]`)
-                .first()
-                .after(`<button id="refresh-market-table-button" type="button" style="height: 44px; margin-left: 0.5em" onclick="IdlePixelPlus.plugins.market.refreshMarket(true);">
-                            Refresh
-                        </button>`)
-                .after(`<button id="watch-market-item-button" type="button" style="height: 44px; margin-left: 0.5em" onclick="IdlePixelPlus.plugins.market.watchItemOnClick()">
-                            Watch Item
-                        </button>`);;
-
             // Edit tradables modal category names
             new window.MutationObserver((mutationRecords) => {
                 const childList = mutationRecords.filter(record => record.type === "childList")[0];
@@ -974,6 +1038,13 @@
                                 d.addEventListener("click", function(event) {
                                     event.stopPropagation();
                                 });
+                                const match = d.onclick.toString().match(/(Modals\.market_configure_item_to_sell|Market\.browse_get_table)\(\"([a-zA-Z0-9_]+)\"/);
+                                if(match) {
+                                    d.setAttribute("data-bs-toggle", "tooltip");
+                                    d.setAttribute("data-bs-placement", "top");
+                                    d.setAttribute("data-boundary", "window");
+                                    d.setAttribute("title", Items.get_pretty_item_name(match[2]));
+                                }
                             }
                         });
                         if(!isSellModal) {
@@ -987,50 +1058,21 @@
                 subtree: true
             });
 
-            const sellSlotWidth = $(".player-market-slot-base").outerWidth();
-            document.getElementById("market-table").style.minWidth = sellSlotWidth * 3;
-            // History chart
-            $(`#panel-player-market button[onclick^="Market.clicks_browse_player_market_button"]`).parent().before(`
-                <div id="history-chart-div" style="display:block; margin-bottom: 0.5em; width: ${sellSlotWidth * 3}px; height: 200px;">
-                    <select id="history-chart-timespan" align="right" onchange='IdlePixelPlus.plugins.market.fetchMarketHistory();'>
-                        <option value="1d">24 Hours</option>
-                        <option value="7d" selected="selected">7 Days</option>
-                        <option value="30d">30 Days</option>
-                        <option value="60d">60 Days</option>
-                        <option value="120d">120 Days</option>
-                    </select>
-                    <canvas id="history-chart" style="display: block;" align="middle">
-                </div>`);
-            Object.assign(Chart.defaults.datasets.line, {
-                fill: false,
-                tension: 0.3,
-                borderWidth: 2,
-                pointRadius: 1
-            });
-
             // Player ID display
             this.onConfigsChanged();
             var playerID = var_player_id;
             $(`#search-username-hiscores`).after(`<span id="player_id">(ID: ${playerID})</span>`);
 
-            // Market watcher
-            $("#notifications-area").children().last().after(`
-                <div id="notification-market-watcher" class="notification hover hide" onclick='highlight_panel_left(document.getElementById(\"left-panel-item_panel-market\")); switch_panels(\"panel-player-market\");' style="margin-right: 4px; margin-bottom: 4px; background-color: rgb(183, 68, 14);">
-                     <img src="https://idlepixel.s3.us-east-2.amazonaws.com/images/player_market.png" class="w20" title="market_alert">
-                     <span id="notification-market-item-label" class="color-white"> Market Alert</span>
-                </div>`);
-            $("#history-chart-div").prev().before(`
-                <center>
-                <div id="market-watcher-div" class="select-item-tradables-catagory shadow" align="left" style="width: ${sellSlotWidth * 3}px; display: none;">
-                    <span class="bold">Active watchers</span>
-                    <hr style="margin-top: 2px; margin-bottom: 4px;">
-                </div>
-                </center>`);
-
             this.loadStyles();
             this.applyLocalStorage();
             this.checkWatchers();
+            this.getGlobalMarketHistoryAverages(7);
             this.loginDone = true;
+        }
+
+        async fetchBrowseResult(item) {
+            const response = await fetch(`${MARKET_POSTINGS_URL}/${item}/`);
+            return response.json();
         }
 
         browseGetTable(item, updateGraph) {
@@ -1045,7 +1087,7 @@
             }
             else {
                 $("#watch-market-item-button").show();
-                $("#modal-market-configure-item-watcher-image").attr("src", `https://idlepixel.s3.us-east-2.amazonaws.com/images/${item}.png`);
+                $("#modal-market-configure-item-watcher-image").attr("src", this.getItemIconUrl(item));
                 $("#modal-market-configure-item-watcher-label").text(item.split("_").map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(" "));
 
                 try {
@@ -1062,18 +1104,15 @@
             //show_element("market-loading");
             let best = {};
             let bestList = {};
-            return $.get(`../../market/browse/${item}/`).done(function(data) {
+            return $.get(`${MARKET_POSTINGS_URL}/${item}/`).done(async function(data) {
                 const xpMultiplier = DonorShop.has_donor_active(IdlePixelPlus.getVar("donor_bonus_xp_timestamp")) ? 1.1 : 1;
-                //console.log(data);
-
                 const listofAlts = IdlePixelPlus.plugins.market.getConfig("altIDList").replace(";",",").replace(/\s?,\s?/g, ",").toLowerCase().split(',').map(altId => parseInt(altId));
                 const useHeatPot = self.getConfig("heatPotion");
 
-                if(data.filter(datum => ["logs", "raw_fish"].includes(datum.market_item_category)).length > 0) {
+                if(data.find(datum => ["logs", "raw_fish"].includes(datum.market_item_category)) !== undefined) {
                     var coinsPerHeat = 100000;
-                    $.ajax({url: `../../market/browse/logs/`, type: "get", async: false, success: function(data) {
-                        coinsPerHeat = 1.01 * Math.min(...data.map(datum => datum.market_item_price_each / Cooking.getHeatPerLog(datum.market_item_name)));
-                    }});
+                    const logsData = await self.fetchBrowseResult("logs");
+                    coinsPerHeat = 1.01 * Math.min(...logsData.map(datum => datum.market_item_price_each / Cooking.getHeatPerLog(datum.market_item_name)));
                 }
 
                 // Removes the alts listing from market and calculations
@@ -1105,10 +1144,10 @@
                             datum.charPerCoin = charPerCoin;
                             datum.ratios = [perCoin, charPerCoin];
                             if (datum.market_item_name == 'stardust_logs') {
-                                datum.perCoinLabel = `${perCoin.toFixed(perCoin < 10 ? 2 : 1)} coins/heat<br />${sDPerCoin.toFixed(sDPerCoin < 10 ? 2 : 1)} ~SD/coin<br/>${charPerCoin.toFixed(charPerCoin < 10 ? 2: 1)} coin/charcoal convert rate`;
+                                datum.perCoinLabel = `${perCoin.toFixed(perCoin < 10 ? 2 : 1)} coins/heat<br />${sDPerCoin.toFixed(sDPerCoin < 10 ? 2 : 1)} ~SD/coin<br/>${charPerCoin.toFixed(charPerCoin < 10 ? 2: 1)} ~coins/charcoal`;
                             }
                             else {
-                                datum.perCoinLabel = `${perCoin.toFixed(perCoin < 10 ? 2 : 1)} coins/heat<br/>${charPerCoin.toFixed(charPerCoin < 10 ? 2: 1)} coin/charcoal convert rate`;
+                                datum.perCoinLabel = `${perCoin.toFixed(perCoin < 10 ? 2 : 1)} coins/heat<br/>${charPerCoin.toFixed(charPerCoin < 10 ? 2: 1)} ~coins/charcoal`;
                             }
                             self.setBest(best, bestList, datum, perCoin);
                             break;
@@ -1247,7 +1286,7 @@
                     rowHtml += `<td>${Items.get_pretty_item_name(item_name)}${your_entry}</td>`;
                     rowHtml += `<td style="width: 60px;"><img src="https://d1xsc8x7nc5q8t.cloudfront.net/images/${item_name}.png" /></td>`;
                     rowHtml += `<td>${amount}</td>`;
-                    rowHtml += `<td><img src="https://d1xsc8x7nc5q8t.cloudfront.net/images/coins.png" /> ${Market.get_price_after_tax(price_each)}`;
+                    rowHtml += `<td><img src="${COIN_ICON_URL}" /> ${Market.get_price_after_tax(price_each)}`;
                     if(perCoinLabel) {
                         rowHtml += `<br /><span style="font-size: 80%; opacity: 0.8">${perCoinLabel}</span>`;
                     }
@@ -1264,7 +1303,7 @@
                         const qbButtonStr = (qbSetting == 0) ? "Max" : `${qbAmount}`;
                         rowHtml += `<td>
                                         <button onclick='IdlePixelPlus.plugins.market.quickBuyOnClick(${market_id}, ${qbAmount}); event.stopPropagation();' 
-                                                oncontextmenu='IdlePixelPlus.plugins.market.quickBuyOnRightClick(${market_id}, ${qbMaxAmount}, event);' ${qbAmount == 0 ? "disabled": ""}>
+                                                oncontextmenu='IdlePixelPlus.plugins.market.quickBuyOnRightClick(${market_id}, ${qbMaxAmount}, event);' ${qbMaxAmount == 0 ? "disabled": ""}>
                                             Buy ${qbButtonStr}
                                         </button>
                                     </td>`;
@@ -1330,10 +1369,16 @@
             // Split the table data into a visible and hidden array in order to sort the visible one
             const visible = this.currentTableData.filter(datum => !datum.hidden);
             const hidden = this.currentTableData.filter(datum => datum.hidden);
+
             visible.sort((a, b) => {
                 switch(sortDataIndex) {
-                    case 0: return a.market_item_price_each - b.market_item_price_each;
-                    default: return a.ratios[sortDataIndex - 1] - b.ratios[sortDataIndex - 1];
+                    case 0:     return a.market_item_price_each - b.market_item_price_each;
+                    case 100:   {
+                        const a_avg = isNaN(this.marketAverages[a.market_item_name]) ? 0.001 : this.marketAverages[a.market_item_name];
+                        const b_avg = isNaN(this.marketAverages[b.market_item_name]) ? 0.001 : this.marketAverages[b.market_item_name];
+                        return ((a.market_item_price_each / a_avg) - 1) - ((b.market_item_price_each / b_avg) - 1);
+                    }
+                    default:    return a.ratios[sortDataIndex - 1] - b.ratios[sortDataIndex - 1];
                 }
             });
             this.currentTableData = visible.concat(hidden);
@@ -1413,11 +1458,7 @@
             }
 
             const itemNameForQuery = itemName.toLowerCase().replace(/\s/g, '_');
-            let itemVar = IdlePixelPlus.getVar(itemNameForQuery);
-
-            if (itemVar === undefined) {
-                itemVar = "0";
-            }
+            let itemVar = IdlePixelPlus.getVarOrDefault(itemNameForQuery, "0");
 
             const containerElement = $("#modal-market-purchase-item-image").parent();
 
@@ -1429,25 +1470,13 @@
                 containerElement.find("#amount-owned").text(`You own: ${itemVar}`);
             }
         }
-        // <-
 
-        //Zlef
         brewingIngClicked(itemBox) {
-            // Define the ingredient blacklist
-            const ingredientBlacklist = ["stranger_leaf"];
-
             if (this.getConfig("clickBrewIng")) {
-                // Get data-item attribute
                 const dataItem = itemBox.getAttribute("data-item").toLowerCase();
-
-                // Check if dataItem is in the ingredient blacklist
-                if (ingredientBlacklist.includes(dataItem)) {
-                    console.log("in blacklist");
-                    return;
+                if(Market.tradables.find(t => t.item === dataItem)) {
+                    this.openMarketToItem(dataItem);
                 }
-
-                // Call the function to open the market to the specified item
-                this.openMarketToItem(dataItem);
             }
         }
 
@@ -1525,14 +1554,13 @@
             this.applyTotalSell();
         }
 
-        applyLowestPriceSell() {
+        async applyLowestPriceSell() {
             var lowest = 100000000000;
             const min = parseInt($("#modal-market-configure-item-to-sell-label-lower-limit").text().replace(/[^\d]/g, ""));
             const max = parseInt($("#modal-market-configure-item-to-sell-label-upper-limit").text().replace(/[^\d]/g, ""));
             const item = $("#modal-market-configure-item-to-sell-image").attr("src").match(/\/([a-zA-Z0-9_]+)\.png$/)[1];
-            $.ajax({url: `../../market/browse/${item}/`, type: "get", async: false, success: function(data) {
-                lowest = Math.min(...data.map(datum => datum.market_item_price_each));
-            }});
+            const data = await this.fetchBrowseResult(item);
+            lowest = Math.min(...data.map(datum => datum.market_item_price_each));
             $("#modal-market-configure-item-to-sell-price-each").val(Math.max(Math.min(lowest - 1, max), min));
             this.applyTotalSell();
         }
@@ -1581,7 +1609,7 @@
 
             $("#history-chart-div").show();
 
-            const response = await fetch(`https://data.idle-pixel.com/market/api/getMarketHistory.php?item=${item}&range=${timespan}`);
+            const response = await fetch(`${MARKET_HISTORY_URL}?item=${item}&range=${timespan}`);
             const data = await response.json();
             const splitData = this.splitHistoryData(data, timespan == "1d" ? "hours" : "days");
 
@@ -1668,6 +1696,25 @@
             return splitData;
         }
 
+        async getGlobalMarketHistoryAverages(timespan) {
+            const historyResponse = await fetch(`${MARKET_HISTORY_URL}?item=all&range=${timespan}d`);
+            this.marketAverages = await historyResponse.json()
+                .then((data) => {
+                    const sumDict = {};
+                    const avgDict = {};
+                    data.history.forEach(datum => {
+                        sumDict[datum.item] = {
+                            sum: sumDict[datum.item] ? sumDict[datum.item]?.sum + datum.price : datum.price,
+                            length: sumDict[datum.item] ? sumDict[datum.item].length + 1 : 1,
+                        }
+                    });
+                    Object.entries(sumDict).forEach(([item, datum]) => { 
+                        avgDict[item] = datum.sum / datum.length
+                    });
+                    return avgDict;
+                });
+        }
+
         createMarketWatcher() {
             const item = $("#modal-market-configure-item-watcher-label").text().toLowerCase().replace(/\s/g, "_");
             const value = $("#modal-market-configure-item-watcher-price-each").val();
@@ -1696,10 +1743,10 @@
                 </div>
                 <div onclick='IdlePixelPlus.plugins.market.watchedItemOnClick(\"${item}\");' style="margin-top: -15px;">
                 <div style="display: block;">
-                    <img src="https://idlepixel.s3.us-east-2.amazonaws.com/images/${item}.png" width="50px" height="50px">
+                    <img src="${this.getItemIconUrl(item)}" width="50px" height="50px">
                 </div>
                 <div style="display: block;">
-                    <img src="https://d1xsc8x7nc5q8t.cloudfront.net/images/coins.png" title="coins">
+                    <img src="${COIN_ICON_URL}" title="coins">
                     <span class="market-watched-item" id="watched-item-${item}-label">${lt_gt} ${value}</span>
                 </div>
                 </div>
@@ -1716,7 +1763,7 @@
 
         configureItemWatcherModal(item, create) {
             const tradable = Market.tradables.find(t => t.item == item);
-            $("#modal-market-configure-item-watcher-image").attr("src", `https://idlepixel.s3.us-east-2.amazonaws.com/images/${item}.png`);
+            $("#modal-market-configure-item-watcher-image").attr("src", this.getItemIconUrl(item));
             document.getElementById("modal-market-configure-item-watcher-label").textContent = Items.get_pretty_item_name(item);
             document.getElementById("modal-market-configure-item-watcher-low-limit").textContent = tradable.lower_limit;
             document.getElementById("modal-market-configure-item-watcher-high-limit").textContent = tradable.upper_limit;
@@ -1834,19 +1881,24 @@
             }
             if(category in CATEGORY_RATIOS) {
                 for(let i = 0; i < CATEGORY_RATIOS[category].length; i++) {
-                    contextMenu.innerHTML +=`<li id="ratio-${i}" onclick='IdlePixelPlus.plugins.market.contextMenuSelectOnClick(\"ratio-${i}\");'>
+                    contextMenu.innerHTML +=`<li id="context-menu-ratio-${i}" onclick='IdlePixelPlus.plugins.market.contextMenuSelectOnClick(\"context-menu-ratio-${i}\");'>
                                                 <span> ${CATEGORY_RATIOS[category][i]}</span> 
                                             </li>`;
                 }
-                if(this.lastSortIndex == 0)
-                    this.contextMenuChangeSelected("context-menu-price-each-item");
-                else
-                    this.contextMenuChangeSelected(`ratio-${this.lastSortIndex - 1}`);
             }
-            else {
+            else if(this.lastSortIndex != 100) {
                 this.lastSortIndex = 0;
                 this.contextMenuChangeSelected("context-menu-price-each-item");
             }
+            contextMenu.innerHTML +=`<li id="context-menu-negative-diff" onclick='IdlePixelPlus.plugins.market.contextMenuSelectOnClick(\"context-menu-negative-diff\");'>
+                                        <span> Trending Value (7d)</span> 
+                                    </li>`;
+            if(this.lastSortIndex == 0)
+                this.contextMenuChangeSelected("context-menu-price-each-item");
+            else if(this.lastSortIndex == 100)
+                this.contextMenuChangeSelected("context-menu-negative-diff");
+            else
+                this.contextMenuChangeSelected(`context-menu-ratio-${this.lastSortIndex - 1}`);
         }
 
         contextMenuChangeSelected(menuItem) {
@@ -1858,8 +1910,12 @@
 
         contextMenuSelectOnClick(menuItem) {
             this.contextMenuChangeSelected(menuItem);
+            let sortDataIndex = 0;
 
-            const sortDataIndex = (menuItem == "context-menu-price-each-item") ? 0 : parseInt(menuItem.replace(/[^0-9]/g, "")) + 1;
+            if(menuItem == "context-menu-negative-diff")
+                sortDataIndex = 100;
+            else if(menuItem != "context-menu-price-each-item")
+                sortDataIndex = parseInt(menuItem.replace(/[^0-9]/g, "")) + 1;
             this.sortTable(sortDataIndex);
             this.updateTable();
         }
@@ -1874,8 +1930,11 @@
 
             event.stopPropagation();
         }
-    }
 
+        getItemIconUrl(item) {
+            return `${IMAGE_HOST_URL}/${item}.png`;
+        }
+    }
 
     const plugin = new MarketPlugin();
     IdlePixelPlus.registerPlugin(plugin);
