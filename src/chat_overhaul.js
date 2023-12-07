@@ -88,6 +88,7 @@
                 #chat-area {
                     background-color: rgb(var(--chat-bg-color));
                     border-color: rgb(var(--chat-bg-color));
+                    resize: none;
                     > div {
                         font-size: 13pt;
                         font-family: 'montserrat', sans-serif;
