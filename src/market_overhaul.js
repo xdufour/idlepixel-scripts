@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         IdlePixel Market Overhaul - Wynaan Fork
 // @namespace    com.anwinity.idlepixel
-// @version      1.4.3
+// @version      1.5.0
 // @description  Overhaul of market UI and functionality.
 // @author       Original Author: Anwinity || Modded By: GodofNades/Zlef/Wynaan
 // @license      MIT
@@ -17,7 +17,10 @@
     let marketWatcherTimer;
     var marketRunning = false;
 
-    const LOCAL_STORAGE_KEY = "plugin_market_watchers";
+    const LOCAL_STORAGE_KEY_WATCHERS = "plugin_market_watchers";
+    const LOCAL_STORAGE_KEY_LOG = "plugin_market_log";
+
+    const LOCAL_STORAGE_LOG_LIMIT = 100;
 
     const MARKET_HISTORY_URL = "https://data.idle-pixel.com/market/api/getMarketHistory.php";
     const MARKET_TRADABLES_URL = "https://data.idle-pixel.com/market/api/getTradables.php";
@@ -447,6 +450,7 @@
             this.lastCategoryFilter = "all";
             this.historyChart = undefined;
             this.marketAverages = {};
+            this.pendingConfirmationPurchaseLog = {};
             this.currentTableData = undefined;
             this.lastSortIndex = 0;
             this.loginDone = false;
@@ -498,12 +502,10 @@
 
         collectMarketButton() {
             $("#market-sidecar").hide();
-            [1, 2, 3].forEach(n => {
-                const button = $(`button#player-market-slot-collect-amount-${n}`);
-                const collect = parseInt(button.text().replace(/[^0-9]/g,''));
+            document.querySelectorAll(`button[id^=player-market-slot-collect-amount]`).forEach(b => {
+                const collect = parseInt(b.textContent.replace(/[^0-9]/g,''));
                 if(collect > 0){
-                    websocket.send(`MARKET_COLLECT=${n}`);
-                    button.text(button.text().replace(/[0-9,]+/, '0'));
+                    b.click();
                 }
             });
         }
@@ -557,7 +559,7 @@
             const colorItemSlotsBg = this.getStyleFromConfig("colorItemSlotsBgEnabled", "colorItemSlotsBg");
             const colorPanelsBg = this.getStyleFromConfig("colorPanelsBgEnabled", "colorPanelsBg");
             const styles = `
-            #market-table {
+            #market-table, #market-log-table {
                 margin-top: 0.5em !important;
                 border-spacing:0 4px !important;
                 border-collapse: separate;
@@ -718,10 +720,7 @@
                                 margin-bottom: 0;
                             } 
                         }
-                        & #market-table th {
-                            padding: 2px 4px;
-                        }
-                        & #market-table td {
+                        & #market-table th, #market-table td {
                             padding: 2px 4px;
                         }
                     }
@@ -788,6 +787,9 @@
                     box-shadow: 4px 4px 8px #0e0e0e;
                     border-color: #252525;
                     cursor: pointer;
+                }
+                #market-log-table th, #market-log-table td {
+                    padding: 2px 4px;
                 }
             </style>
             `);
@@ -921,6 +923,15 @@
             
                 // Add event to reset collection button
                 b.addEventListener("click", () => {
+                    const item = document.getElementById(`player-market-slot-item-item-label-${id}`).textContent.toLowerCase().replace(/\s/g, "_");
+                    const price_each = parseInt(document.getElementById(`player-market-slot-item-price-each-${id}`).textContent.replace(/[^0-9]+/g, ""));
+                    const amount = b.textContent.replace(/[^0-9]+/g, "") / price_each;
+                    this.saveLogToLocalStorage({
+                        item: item,
+                        amount: amount,
+                        price_each: price_each,
+                        transaction_type: "Sale"
+                    });
                     b.textContent = b.textContent.replace(/[0-9,]+/, '0');
                     $("#market-sidecar").hide();
                     this.refreshMarket(false);
@@ -966,8 +977,8 @@
                                 const response = await fetch(`${MARKET_POSTINGS_URL}/${item}/`);
                                 const data = await response.json();
                                 let currentMarketMinPrice = Math.min(...data.map(datum => datum.market_item_price_each));
-                                if(!isFinite(currentMarketMinPrice)) {
-                                    currentMarketMinPrice = ((item) => this.marketAverages[item])();
+                                if(!isFinite(currentMarketMinPrice)) { // If item isn't currently on sale, use market average value instead
+                                    currentMarketMinPrice = this.marketAverages[item];
                                 }
                                 const displayedValue = (qty * currentMarketMinPrice > 1000) ? `${(qty * currentMarketMinPrice / 1000).toFixed(2)}k` : qty * currentMarketMinPrice;
                                 totalCost += qty * currentMarketMinPrice;
@@ -1025,6 +1036,27 @@
                 return self.browseGetTable(item, true);
             }
 
+            // Wrap Market.purchase_item to send to log
+            const original_purchase_item = Market.purchase_item;
+            Market.purchase_item = function() {
+                const item = document.getElementById("modal-market-purchase-item-label").textContent.toLowerCase().replace(/\s/g, "_");
+                const amount = get_number_with_letters(document.getElementById("modal-market-purchase-item-amount-input").value);
+                const price_each = parseInt(document.getElementById("modal-market-purchase-item-price-each").value.replace(/[^0-9]+/g, ""));
+                IdlePixelPlus.plugins.market.storeLogPendingConfirmation(item, amount, price_each, "Purchase");
+                original_purchase_item.apply(this);
+            }
+
+            // Add event listener to websocket to catch purchase confirmations
+            websocket.connected_socket.addEventListener("message", (e) => {
+                if(e.data.includes("OPEN_DIALOGUE=")) {
+                    const values = e.data.substring(e.data.indexOf('=')+1);
+                    if(values.includes("MARKET PURCHASE") && values.includes("Successfully purchased from player market!")) {
+                        this.saveLogToLocalStorage(this.pendingConfirmationPurchaseLog);
+                        this.pendingConfirmationPurchaseLog = {};
+                    }
+                }
+            })
+
             // Edit tradables modal category names
             new window.MutationObserver((mutationRecords) => {
                 const childList = mutationRecords.filter(record => record.type === "childList")[0];
@@ -1063,12 +1095,14 @@
             });
 
             // Player ID display
-            this.onConfigsChanged();
             var playerID = var_player_id;
             $(`#search-username-hiscores`).after(`<span id="player_id">(ID: ${playerID})</span>`);
 
+            this.onConfigsChanged();
+            this.createMarketLogPanel();
             this.loadStyles();
-            this.applyLocalStorage();
+            this.applyLogLocalStorage();
+            this.applyWatchersLocalStorage();
             this.checkWatchers();
             this.getGlobalMarketHistoryAverages(7);
             this.preloadMarketTradables();
@@ -1303,12 +1337,16 @@
                     rowHtml += `<td>${Market._get_expire_time(timestamp)}</td>`;
                     if(this.getConfig("quickBuyColumn")) {
                         const qbSetting = this.getConfig("quickBuyAmount");
-                        const qbAmount = Math.min(qbSetting, amount, Math.floor(IdlePixelPlus.getVarOrDefault("coins", 0, "int") / (price_each * 1.01)));
-                        const qbMaxAmount = Math.min(amount, Math.floor(IdlePixelPlus.getVarOrDefault("coins", 0, "int") / (price_each * 1.01)))
+                        const qbMaxAmount = Math.min(amount, Math.floor(IdlePixelPlus.getVarOrDefault("coins", 0, "int") / (price_each * 1.01)));
+                        const qbAmount = (qbSetting == 0) ? qbMaxAmount : Math.min(qbSetting, amount, Math.floor(IdlePixelPlus.getVarOrDefault("coins", 0, "int") / (price_each * 1.01)));
                         const qbButtonStr = (qbSetting == 0) ? "Max" : `${qbAmount}`;
                         rowHtml += `<td>
-                                        <button onclick='IdlePixelPlus.plugins.market.quickBuyOnClick(${market_id}, ${qbAmount}); event.stopPropagation();' 
-                                                oncontextmenu='IdlePixelPlus.plugins.market.quickBuyOnRightClick(${market_id}, ${qbMaxAmount}, event);' ${qbMaxAmount == 0 ? "disabled": ""}>
+                                        <button onclick='event.stopPropagation();
+                                                        IdlePixelPlus.plugins.market.quickBuyOnClick(${market_id}, ${qbAmount});
+                                                        IdlePixelPlus.plugins.market.storeLogPendingConfirmation(\"${item_name}\", \"${qbAmount}\", \"${price_each}\", \"Purchase\");' 
+                                                oncontextmenu='IdlePixelPlus.plugins.market.quickBuyOnRightClick(${market_id}, ${qbMaxAmount}, event);
+                                                                IdlePixelPlus.plugins.market.storeLogPendingConfirmation(\"${item_name}\", \"${qbMaxAmount}\", \"${price_each}\", \"Purchase\");' 
+                                                ${qbMaxAmount == 0 ? "disabled": ""}>
                                             Buy ${qbButtonStr}
                                         </button>
                                     </td>`;
@@ -1736,7 +1774,7 @@
                 $(`#watched-item-${item}-label`).text(`${lt_gt} ${value}`);
             }
 
-            this.saveToLocalStorage(item, value, lt_gt);
+            this.saveWatcherToLocalStorage(item, value, lt_gt);
             this.checkWatchers();
         }
 
@@ -1763,7 +1801,7 @@
             if($("#market-watcher-div").find(".market-watched-item").length == 0) {
                 $("#market-watcher-div").hide();
             }
-            this.removeFromLocalStorage(item);
+            this.removeWatcherFromLocalStorage(item);
         }
 
         configureItemWatcherModal(item, create) {
@@ -1828,46 +1866,39 @@
             }, 2000);
         }
 
-        onVariableSet(key, valueBefore, valueAfter) {
-
-        }
-
-        saveToLocalStorage(item, value, lt_gt) {
-            const ls = localStorage.getItem(LOCAL_STORAGE_KEY);
+        saveWatcherToLocalStorage(item, value, lt_gt) {
+            const ls = localStorage.getItem(LOCAL_STORAGE_KEY_WATCHERS);
+            const newWatcher = {
+                item: item,
+                value: value,
+                lt_gt: lt_gt
+            };
             var jsonData = {};
             if(ls) {
                 jsonData = JSON.parse(ls);
                 jsonData.watchers = jsonData.watchers.filter(watcher => watcher.item !== item);
-                jsonData.watchers.push({
-                    item: item,
-                    value: value,
-                    lt_gt: lt_gt
-                });
+                jsonData.watchers.push(newWatcher);
             }
             else {
                 jsonData = {
-                    watchers: [{
-                        item: item,
-                        value: value,
-                        lt_gt: lt_gt
-                    }]
+                    watchers: [newWatcher]
                 };
             }
-            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(jsonData));
+            localStorage.setItem(LOCAL_STORAGE_KEY_WATCHERS, JSON.stringify(jsonData));
         }
 
-        removeFromLocalStorage(item) {
-            const ls = localStorage.getItem(LOCAL_STORAGE_KEY);
+        removeWatcherFromLocalStorage(item) {
+            const ls = localStorage.getItem(LOCAL_STORAGE_KEY_WATCHERS);
             var jsonData = {};
             if(ls) {
                 jsonData = JSON.parse(ls);
                 jsonData.watchers = jsonData.watchers.filter(watcher => watcher.item !== item);
             }
-            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(jsonData));
+            localStorage.setItem(LOCAL_STORAGE_KEY_WATCHERS, JSON.stringify(jsonData));
         }
 
-        applyLocalStorage() {
-            const ls = localStorage.getItem(LOCAL_STORAGE_KEY);
+        applyWatchersLocalStorage() {
+            const ls = localStorage.getItem(LOCAL_STORAGE_KEY_WATCHERS);
             if(ls) {
                 const jsonData = JSON.parse(ls);
                 if(jsonData.watchers && jsonData.watchers.length > 0) {
@@ -1944,6 +1975,90 @@
 
         getItemIconUrl(item) {
             return `${IMAGE_HOST_URL}/${item}.png`;
+        }
+
+        createMarketLogPanel() {
+            IdlePixelPlus.addPanel("market-log", "Market Log", function() {
+                let content = `
+                <div>
+                    <table id="market-log-table" class="market-table mt-5" width="90%" style="min-width: 900px;" original-width="90%">
+                    </table>
+                </div>`;
+                return content;
+            });
+            document.getElementById("left-panel-item_panel-history").insertAdjacentHTML("afterend",
+            `<div id="left-panel-item_panel-market-log" onclick="highlight_panel_left(this);switch_panels('panel-market-log')" class="hover hover-menu-bar-item left-menu-item">
+                <img src="https://d1xsc8x7nc5q8t.cloudfront.net/images/player_market.png"> <span id="menu-bar-market-log-label">MARKET LOG</span>
+            </div>`);
+        }
+
+        onPanelChanged(panelBefore, _) {
+            if(panelBefore === "market-log")
+                document.getElementById("left-panel-item_panel-market-log").style.backgroundColor = "";
+        }
+
+        storeLogPendingConfirmation(item, amount, price, type) {
+            this.pendingConfirmationPurchaseLog = {
+                item: item,
+                amount: amount,
+                price_each: price,
+                transaction_type: type
+            };
+        }
+
+        saveLogToLocalStorage(log) {
+            const ls = localStorage.getItem(LOCAL_STORAGE_KEY_LOG);
+            const currentTime = new Date();
+            log.timestamp = currentTime.toLocaleString(undefined, {month: 'short', day: 'numeric', hour: '2-digit', hour12: false, minute: '2-digit'});
+            var jsonData = {};
+            if(ls) {
+                jsonData = JSON.parse(ls);
+                jsonData.logs.unshift(log);
+                if(jsonData.logs.length > LOCAL_STORAGE_LOG_LIMIT)
+                    jsonData.logs = jsonData.logs.slice(0, LOCAL_STORAGE_LOG_LIMIT);
+            }
+            else {
+                jsonData = {
+                    logs: [log]
+                };
+            }
+            localStorage.setItem(LOCAL_STORAGE_KEY_LOG, JSON.stringify(jsonData));
+            this.applyLogLocalStorage();
+        }
+
+        applyLogLocalStorage() {
+            const ls = localStorage.getItem(LOCAL_STORAGE_KEY_LOG);
+            let html = `<tr>
+                            <th>ITEM</th>
+                            <th style="width: 60px;"></th>
+                            <th>AMOUNT</th>
+                            <th>PRICE EACH</th>
+                            <th>TOTAL</th>
+                            <th>TRANSACTION</th>
+                            <th>TIME</th>
+                        </tr>`;
+            if(ls) {
+                const jsonData = JSON.parse(ls);
+                if(jsonData.logs && jsonData.logs.length > 0) {
+                    jsonData.logs.forEach(log => {
+                        let rowHtml = `<tr>`;
+                        rowHtml += `<td>${Items.get_pretty_item_name(log.item)}</td>`;
+                        rowHtml += `<td style="width: 60px;"><img src="https://d1xsc8x7nc5q8t.cloudfront.net/images/${log.item}.png" /></td>`;
+                        rowHtml += `<td>${log.amount}</td>`;
+                        rowHtml += `<td><img src="${COIN_ICON_URL}" /> ${log.price_each}`;
+                        rowHtml += `<td><img src="${COIN_ICON_URL}" /> ${log.price_each * log.amount}`;
+                        rowHtml += `<td>${log.transaction_type}</td>`;
+                        rowHtml += `<td>${log.timestamp}</td>`;
+                        rowHtml += `</tr>`;
+                        html += rowHtml;
+                    });
+                }
+            }
+            document.getElementById("market-log-table").innerHTML = html;
+        }
+
+        deleteLogLocalStorage() {
+            localStorage.setItem(LOCAL_STORAGE_KEY_LOG, "");
         }
     }
 
