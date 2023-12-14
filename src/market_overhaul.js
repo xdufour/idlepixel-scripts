@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         IdlePixel Market Overhaul - Wynaan Fork
 // @namespace    com.anwinity.idlepixel
-// @version      1.5.0
+// @version      1.5.1
 // @description  Overhaul of market UI and functionality.
 // @author       Original Author: Anwinity || Modded By: GodofNades/Zlef/Wynaan
 // @license      MIT
@@ -626,6 +626,7 @@
             div[id^=player-market-slot-empty] {
                 &:hover {
                     outline: 1px solid ${colorText + "55"};
+                    z-index: 1;
                 }
                 > #panel-sell-text {
                     display: flex;
@@ -876,7 +877,7 @@
 
             // Market watcher
             $("#notifications-area").children().last().after(`
-                <div id="notification-market-watcher" class="notification hover hide" onclick='highlight_panel_left(document.getElementById(\"left-panel-item_panel-market\")); switch_panels(\"panel-player-market\");' style="margin-right: 4px; margin-bottom: 4px; background-color: rgb(183, 68, 14);">
+                <div id="notification-market-watcher" class="notification hover hide" onclick='switch_panels(\"panel-player-market\");' style="margin-right: 4px; margin-bottom: 4px; background-color: rgb(183, 68, 14);">
                     <img src="https://idlepixel.s3.us-east-2.amazonaws.com/images/player_market.png" class="w20" title="market_alert">
                     <span id="notification-market-item-label" class="color-white"> Market Alert</span>
                 </div>`);
@@ -1343,9 +1344,9 @@
                         rowHtml += `<td>
                                         <button onclick='event.stopPropagation();
                                                         IdlePixelPlus.plugins.market.quickBuyOnClick(${market_id}, ${qbAmount});
-                                                        IdlePixelPlus.plugins.market.storeLogPendingConfirmation(\"${item_name}\", \"${qbAmount}\", \"${price_each}\", \"Purchase\");' 
+                                                        IdlePixelPlus.plugins.market.storeLogPendingConfirmation(\"${item_name}\", \"${qbAmount}\", \"${Market.get_price_after_tax(price_each)}\", \"Purchase\");' 
                                                 oncontextmenu='IdlePixelPlus.plugins.market.quickBuyOnRightClick(${market_id}, ${qbMaxAmount}, event);
-                                                                IdlePixelPlus.plugins.market.storeLogPendingConfirmation(\"${item_name}\", \"${qbMaxAmount}\", \"${price_each}\", \"Purchase\");' 
+                                                                IdlePixelPlus.plugins.market.storeLogPendingConfirmation(\"${item_name}\", \"${qbMaxAmount}\", \"${Market.get_price_after_tax(price_each)}\", \"Purchase\");' 
                                                 ${qbMaxAmount == 0 ? "disabled": ""}>
                                             Buy ${qbButtonStr}
                                         </button>
@@ -1366,6 +1367,7 @@
         quickBuyOnClick(marketId, amount) {
             IdlePixelPlus.sendMessage("MARKET_PURCHASE=" + marketId + "~" + amount);
             this.refreshMarket(false);
+            this.checkWatchers();
         }
 
         quickBuyOnRightClick(marketId, amount, event) {
@@ -1375,6 +1377,7 @@
             if(!qbAllNeedsAltKey || event.altKey) {
                 IdlePixelPlus.sendMessage("MARKET_PURCHASE=" + marketId + "~" + amount);
                 this.refreshMarket(false);
+                this.checkWatchers();
             }
         }
 
@@ -1530,9 +1533,6 @@
             if (playerMarketPanel) {
                 playerMarketPanel.click();
             }
-
-            // Make sure to switch to the player market panel (annoys the shit out of me that the notification buttons don't do this)
-            highlight_panel_left(playerMarketPanel);
             switch_panels('panel-player-market');
 
             const intervalId = setInterval(() => {
@@ -1837,33 +1837,32 @@
         }
 
         checkWatchers() {
-            var itemTriggered = false;
-            $(".market-watched-item").each(async function() {
-                const id = $(this).attr("id");
+            const notification = document.getElementById("notification-market-watcher");
+            const watchedItems = document.querySelectorAll(".market-watched-item");
+            const promises = Array.from(watchedItems).map((async (watchedItem) => {
+                const id = watchedItem.id;
                 const item = id.match(/watched-item-([a-zA-Z0-9_]+)-label/)[1];
-                const price = $(this).text().match(/[0-9]+/)[0];
-                const lt_gt = $(this).text().match(/[><]/)[0];
+                const price = watchedItem.textContent.match(/[0-9]+/)[0];
+                const lt_gt = watchedItem.textContent.match(/[><]/)[0];
                 //console.log("Running watcher checks..");
-
                 const response = await fetch(`../../market/browse/${item}/`);
                 const data = await response.json();
 
-                const sorted = data.map(datum => datum.market_item_price_each * 1.01).toSorted((a, b) => a - b);
+                const sorted = data.map(datum => Math.floor(datum.market_item_price_each * 1.01)).toSorted((a, b) => a - b);
                 if(sorted.length > 0 && (lt_gt === ">" && sorted[0] >= price) || (lt_gt === "<" && sorted[0] <= price)) {
-                    itemTriggered = true;
-                    $(`#watched-item-${item}`).css("background-color", "#99ffcc");
-                    //console.log("Market watcher triggered for item " + item);
+                    document.getElementById(`watched-item-${item}`).style.backgroundColor = "#99ffcc";
+                    return Promise.resolve();
                 }
                 else {
-                    $(`#watched-item-${item}`).css("background-color", "#ffcccc");
+                    document.getElementById(`watched-item-${item}`).style.backgroundColor = "#ffcccc";
+                    return Promise.reject();
                 }
-            })
-
-            setTimeout(() => {
-                const e = document.querySelector("#notification-market-watcher");
-                if(e)
-                    itemTriggered ? e.classList.remove("hide") : e.classList.add("hide");
-            }, 2000);
+            }));
+            Promise.any(promises).then(() =>
+                notification.classList.remove("hide")
+            ).catch(() =>
+                notification.classList.add("hide")
+            );
         }
 
         saveWatcherToLocalStorage(item, value, lt_gt) {
@@ -1986,15 +1985,19 @@
                 </div>`;
                 return content;
             });
-            document.getElementById("left-panel-item_panel-history").insertAdjacentHTML("afterend",
-            `<div id="left-panel-item_panel-market-log" onclick="highlight_panel_left(this);switch_panels('panel-market-log')" class="hover hover-menu-bar-item left-menu-item">
-                <img src="https://d1xsc8x7nc5q8t.cloudfront.net/images/player_market.png"> <span id="menu-bar-market-log-label">MARKET LOG</span>
+            document.getElementById("left-panel-achievements-btn").nextElementSibling.insertAdjacentHTML("afterend",
+            `<div id="left-panel-item_panel-market-log" onclick="switch_panels('panel-market-log')" class="hover hover-menu-bar-item left-menu-item">
+                <table class="game-menu-bar-left-table-btn left-menu-item-quests-ach-loot" style="width:100%">
+                    <tbody><tr>
+                        <td style="width:30px;">
+                            <img id="menu-bar-achievements-icon" class="w30" src="https://d1xsc8x7nc5q8t.cloudfront.net/images/player_market.png">
+                        </td>
+                        <td>
+                            MARKET LOG
+                        </td>
+                    </tr>
+                </tbody></table>    
             </div>`);
-        }
-
-        onPanelChanged(panelBefore, _) {
-            if(panelBefore === "market-log")
-                document.getElementById("left-panel-item_panel-market-log").style.backgroundColor = "";
         }
 
         storeLogPendingConfirmation(item, amount, price, type) {
