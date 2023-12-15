@@ -160,7 +160,7 @@
             this.topbarSections.push({ rows: [
                 options.outerHTML,
                 playersOnline.outerHTML,
-                activityLog.outerHTML
+                `<div id="plugin-buttons"></div>`
             ]});
 
             // Hide original left menu
@@ -177,6 +177,8 @@
                 <tbody>${tableBody}</tbody>
             </table>
             `);
+
+            document.getElementById("plugin-buttons").appendChild(activityLog);
          }
     }
 
