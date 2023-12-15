@@ -167,6 +167,7 @@
 
             const gameChat = document.getElementById("game-chat");
             const gameScreen = document.getElementById("game-screen");
+            const topBar = document.getElementById("top-bar");
 
             autoScrollButton.style.removeProperty("max-height");
             autoScrollButton.style.color = "green";
@@ -239,6 +240,18 @@
                     }
                 });
             }).observe(document.getElementById("content"), {
+                attributes: true
+            });
+
+            // Observer to size game chat according to top bar height
+            new window.MutationObserver((mutationRecords) => {
+                mutationRecords.forEach(record => {
+                    if(record.attributeName === "style") {
+                        gameChat.style.top = `calc(12pt + ${topBar.clientHeight + 1}px)`;
+                        gameChat.style.height = `calc(100vh - 24pt - ${topBar.clientHeight + 1}px)`;
+                    }
+                });
+            }).observe(topBar, {
                 attributes: true
             });
 
@@ -357,6 +370,16 @@
                 originalOnConfigsChanged.apply(this, arguments);
                 IdlePixelPlus.plugins["chat_overhaul"].applyUITweaksThemes();
             }
+        }
+
+        // This function is called when the player enters combat
+        onCombatStart() {
+            document.getElementById("top-bar").style.display = "none";
+        }
+
+        // This function is called when the player exits combat
+        onCombatEnd() {
+            document.getElementById("top-bar").style.display = "block";
         }
     }
 
