@@ -1344,9 +1344,9 @@
                         rowHtml += `<td>
                                         <button onclick='event.stopPropagation();
                                                         IdlePixelPlus.plugins.market.quickBuyOnClick(${market_id}, ${qbAmount});
-                                                        IdlePixelPlus.plugins.market.storeLogPendingConfirmation(\"${item_name}\", \"${qbAmount}\", \"${Market.get_price_after_tax(price_each)}\", \"Purchase\");' 
+                                                        IdlePixelPlus.plugins.market.storeLogPendingConfirmation(\"${item_name}\", \"${qbAmount}\", \"${Math.floor(price_each * 1.01)}\", \"Purchase\");' 
                                                 oncontextmenu='IdlePixelPlus.plugins.market.quickBuyOnRightClick(${market_id}, ${qbMaxAmount}, event);
-                                                                IdlePixelPlus.plugins.market.storeLogPendingConfirmation(\"${item_name}\", \"${qbMaxAmount}\", \"${Market.get_price_after_tax(price_each)}\", \"Purchase\");' 
+                                                                IdlePixelPlus.plugins.market.storeLogPendingConfirmation(\"${item_name}\", \"${qbMaxAmount}\", \"${Math.floor(price_each * 1.01)}\", \"Purchase\");' 
                                                 ${qbMaxAmount == 0 ? "disabled": ""}>
                                             Buy ${qbButtonStr}
                                         </button>
@@ -1598,12 +1598,11 @@
         }
 
         async applyLowestPriceSell() {
-            var lowest = 100000000000;
             const min = parseInt($("#modal-market-configure-item-to-sell-label-lower-limit").text().replace(/[^\d]/g, ""));
             const max = parseInt($("#modal-market-configure-item-to-sell-label-upper-limit").text().replace(/[^\d]/g, ""));
             const item = $("#modal-market-configure-item-to-sell-image").attr("src").match(/\/([a-zA-Z0-9_]+)\.png$/)[1];
             const data = await this.fetchBrowseResult(item);
-            lowest = Math.min(...data.map(datum => datum.market_item_price_each));
+            const lowest = Math.min(...data.map(datum => datum.market_item_price_each));
             $("#modal-market-configure-item-to-sell-price-each").val(Math.max(Math.min(lowest - 1, max), min));
             this.applyTotalSell();
         }
