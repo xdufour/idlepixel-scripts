@@ -151,11 +151,14 @@
             const options = document.querySelector("div.dropdown");
             const playersOnline = document.querySelector('div[onclick*="show_players"]');
             const activityLog = document.querySelector('a[title="Activity Log"]');
+            const varViewer = document.querySelector('a[title="Open VarViewer"]');
 
             topBar.removeChild(options);
             topBar.removeChild(playersOnline);
             if(activityLog)
                 topBar.removeChild(activityLog);
+            if(varViewer)
+                topBar.removeChild(varViewer);
 
             this.topbarSections.push({ rows: [
                 options.outerHTML,
@@ -178,6 +181,7 @@
             </table>
             `);
 
+            document.getElementById("plugin-buttons").appendChild(varViewer);
             document.getElementById("plugin-buttons").appendChild(activityLog);
          }
     }
