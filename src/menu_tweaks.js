@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Menu Tweaks
 // @namespace    com.anwinity.idlepixel
-// @version      1.0.0
+// @version      1.0.1
 // @description  Move menu items around.
 // @author       Wynaan
 // @license      MIT
@@ -94,7 +94,7 @@
             // Resources
             const energy = document.getElementById('menu-bar-energy');
             const heat = document.getElementById('menu-bar-heat');
-            const fightPoints = document.getElementById("menu-bar-fight-points");
+            const fightPoints = document.getElementById("menu-bar-fp");
 
             energy.parentElement.removeChild(energy);
 
@@ -168,12 +168,15 @@
 
             // Hide original left menu
             leftMenuTop.style.display = "none";
+            const topSeparator = leftMenuTop.nextElementSibling;
+            if(topSeparator.nodeName === "HR")
+                topSeparator.style.display = "none";
 
             // Remove text nodes
             topBar.textContent = "";
 
             const tableBody = Array.from({length: Math.max(...this.topbarSections.map(s => s.rows.length))}, (_, i) => i)
-                .map(i => "<tr>" + this.topbarSections.map(s => `<td style='width: ${100 / this.topbarSections.length}vw;'>` + (s.rows[i] || "") + "</td>").join("") + "</tr>").join("");
+                .map(i => "<tr>" + this.topbarSections.map(s => `<td style='width: auto; max-width: ${100 / this.topbarSections.length}vw;'>` + (s.rows[i] || "") + "</td>").join("") + "</tr>").join("");
 
             topBar.insertAdjacentHTML("afterbegin", `
             <table id="user-info-top-bar" class="">
